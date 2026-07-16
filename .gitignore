@@ -2,8 +2,7 @@
 *ServerLog*
 *.log
 
-# Generated documentation kept only on the development server
-docs/
+# Project plan kept only on the development server
 RAG_PROJECT_PLAN.md
 
 # Local secrets
