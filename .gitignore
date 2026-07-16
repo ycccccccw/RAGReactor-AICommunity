@@ -1,0 +1,23 @@
+# Runtime logs
+*ServerLog*
+*.log
+
+# Generated documentation kept only on the development server
+docs/
+RAG_PROJECT_PLAN.md
+
+# Local secrets
+.env
+
+# Test binaries and temporary files
+tests/api_router_test
+*.tmp
+*.o
+server
+
+# Runtime user content
+root/uploads/
+
+# Bundled/generated artifacts
+webbench-1.5.tar.gz
+WebBench_test/webbench-1.5/webbench
