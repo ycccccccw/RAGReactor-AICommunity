@@ -52,18 +52,24 @@ bool Log::init(const char *file_name, int close_log, int log_buf_size, int split
     //解析路径
     const char *p = strrchr(file_name, '/');//为了判断文件名是否传入了路径
     //格式化解析的  路径_时间_文件名 通过fopen打开或创建文件
-    char log_full_name[256] = {0};//路径+时间+文件名(存储完整的路径名)
+    char log_full_name[512] = {0};//路径+时间+文件名(存储完整的路径名)
     if(p==NULL){
         //a. 未传入路径，直接将 时间+文件名 拼接
         //eg文件名: ServerLog
-        snprintf(log_full_name, 255, "%d_%02d_%02d_%s", my_tm.tm_year+1900, my_tm.tm_mon+1, my_tm.tm_mday, file_name);
+        snprintf(log_full_name, sizeof(log_full_name), "%d_%02d_%02d_%s",
+                 my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, file_name);
     }else
     {
         //b. 传入了路径，解析路径，将路径+时间+文件名拼接
         //eg文件名: /MyWebServer/ServerLog
-        strcpy(log_name, p + 1);//p + 1取出文件名
-        strncpy(dir_name, file_name, p - file_name + 1);//将dir路径与文件名包含的路径进行拼接
-        snprintf(log_full_name, 255, "%s%d_%02d_%02d_%s", dir_name, my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, log_name);
+        snprintf(log_name, sizeof(log_name), "%s", p + 1);//p + 1取出文件名
+        const size_t directory_length = static_cast<size_t>(p - file_name + 1);
+        const size_t copied_length =
+            directory_length < sizeof(dir_name) - 1 ? directory_length : sizeof(dir_name) - 1;
+        memcpy(dir_name, file_name, copied_length);
+        dir_name[copied_length] = '\0';
+        snprintf(log_full_name, sizeof(log_full_name), "%s%d_%02d_%02d_%s", dir_name,
+                 my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, log_name);
     }
     m_today = my_tm.tm_mday;//记录当前日期
     //3.2 打开or创建文件

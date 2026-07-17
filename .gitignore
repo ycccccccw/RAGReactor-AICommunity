@@ -10,9 +10,16 @@ RAG_PROJECT_PLAN.md
 
 # Test binaries and temporary files
 tests/api_router_test
+tests/rag_stage2_test
+tools/index_documents
+tools/search_index
 *.tmp
 *.o
 server
+
+# Generated vector indexes
+knowledge/index/
+*.ragvec
 
 # Runtime user content
 root/uploads/
