@@ -1,4 +1,5 @@
 #include "api_router.h"
+#include "../ai_rag/rag_service.h"
 
 #include <boost/json.hpp>
 #include <atomic>
@@ -26,6 +27,31 @@ std::string sse_event(const std::string &event, const json::value &data)
 {
     return "event: " + event + "\n" + "data: " + json::serialize(data) + "\n\n";
 }
+
+json::array source_documents(const std::vector<rag::SearchResult> &results)
+{
+    json::array documents;
+    for (std::size_t i = 0; i < results.size(); ++i)
+    {
+        json::object source;
+        source["id"] = i + 1;
+        source["file"] = results[i].chunk.source;
+        source["chunk_index"] = results[i].chunk.chunk_index;
+        source["score"] = results[i].score;
+        source["text"] = results[i].chunk.text;
+        documents.push_back(std::move(source));
+    }
+    return documents;
+}
+
+std::size_t utf8_split_position(const std::string &text)
+{
+    std::size_t position = text.size() / 2;
+    while (position < text.size() && position > 0 &&
+           (static_cast<unsigned char>(text[position]) & 0xC0u) == 0x80u)
+        ++position;
+    return position;
+}
 }
 
 ApiResponse ApiRouter::route(const ApiRequest &request)
@@ -49,11 +75,13 @@ ApiResponse ApiRouter::route(const ApiRequest &request)
 
 ApiResponse ApiRouter::health()
 {
+    rag::RagService &service = rag::RagService::instance();
     json::object payload;
     payload["status"] = "ok";
     payload["service"] = "RAGReactor";
-    payload["rag_ready"] = false;
-    payload["provider"] = "mock";
+    payload["rag_configured"] = service.configured();
+    payload["index_ready"] = service.index_ready();
+    payload["provider"] = service.provider_name();
 
     ApiResponse response;
     response.status = 200;
@@ -105,6 +133,17 @@ ApiResponse ApiRouter::ask(const ApiRequest &request)
     }
 
     const std::string request_id = next_request_id();
+    rag::RagAnswer rag_answer;
+    try
+    {
+        rag_answer = rag::RagService::instance().ask(
+            question, static_cast<std::size_t>(top_k));
+    }
+    catch (const std::exception &exception)
+    {
+        return error(502, "RAG_UPSTREAM_ERROR", exception.what());
+    }
+
     if (stream)
     {
         ApiResponse response;
@@ -116,15 +155,16 @@ ApiResponse ApiRouter::ask(const ApiRequest &request)
 
         json::object sources;
         sources["request_id"] = request_id;
-        sources["documents"] = json::array();
+        sources["documents"] = source_documents(rag_answer.sources);
         response.stream_chunks.push_back(sse_event("sources", sources));
 
+        const std::size_t split = utf8_split_position(rag_answer.text);
         json::object first_delta;
-        first_delta["text"] = "这是 RAGReactor 的 ";
+        first_delta["text"] = rag_answer.text.substr(0, split);
         response.stream_chunks.push_back(sse_event("delta", first_delta));
 
         json::object second_delta;
-        second_delta["text"] = "Mock 流式回答。真实知识库将在下一阶段接入。";
+        second_delta["text"] = rag_answer.text.substr(split);
         response.stream_chunks.push_back(sse_event("delta", second_delta));
 
         json::object done;
@@ -137,8 +177,9 @@ ApiResponse ApiRouter::ask(const ApiRequest &request)
     payload["request_id"] = request_id;
     payload["question"] = question;
     payload["top_k"] = top_k;
-    payload["answer"] = "当前为 Mock 回答，RAG 服务将在后续阶段接入。";
-    payload["sources"] = json::array();
+    payload["answer"] = rag_answer.text;
+    payload["grounded"] = rag_answer.used_knowledge;
+    payload["sources"] = source_documents(rag_answer.sources);
 
     ApiResponse response;
     response.status = 200;
@@ -164,6 +205,8 @@ ApiResponse ApiRouter::error(int status, const std::string &code,
     else if (status == 405) response.reason = "Method Not Allowed";
     else if (status == 413) response.reason = "Payload Too Large";
     else if (status == 415) response.reason = "Unsupported Media Type";
+    else if (status == 502) response.reason = "Bad Gateway";
+    else if (status == 503) response.reason = "Service Unavailable";
     else response.reason = "Internal Server Error";
     response.body = json::serialize(payload);
     return response;

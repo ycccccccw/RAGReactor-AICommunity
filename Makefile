@@ -95,17 +95,21 @@ else
 endif
 
 SOURCES = main.cpp timer/lst_timer.cpp http/http_conn.cpp api/api_router.cpp log/log.cpp \
-	CGImysql/sql_connection_pool.cpp webserver.cpp sub_reactor.cpp config.cpp
+	CGImysql/sql_connection_pool.cpp webserver.cpp sub_reactor.cpp config.cpp $(RAG_SOURCES) \
+	ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
+	ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/rag_service.cpp
 HEADERS = $(shell find . -path './.git' -prune -o -name '*.h' -print)
 RAG_SOURCES = ai_rag/document_loader.cpp ai_rag/text_splitter.cpp \
 	ai_rag/embedding_provider.cpp ai_rag/vector_store.cpp ai_rag/knowledge_indexer.cpp
 
 server: $(SOURCES) $(HEADERS)
-	$(CXX) -o server $(SOURCES) $(CXXFLAGS) -lpthread -lmysqlclient -lcrypto -lboost_json
+	$(CXX) -o server $(SOURCES) $(CXXFLAGS) -lpthread -lmysqlclient -lcrypto -lboost_json -lcurl
 
-test-api: tests/api_router_test.cpp api/api_router.cpp api/api_router.h
+test-api: tests/api_router_test.cpp api/api_router.cpp api/api_router.h $(RAG_SOURCES)
 	$(CXX) -o tests/api_router_test tests/api_router_test.cpp api/api_router.cpp \
-		$(CXXFLAGS) -lboost_json
+		$(RAG_SOURCES) ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
+		ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/rag_service.cpp \
+		$(CXXFLAGS) -lboost_json -lcurl -lpthread
 	./tests/api_router_test
 
 index-documents: tools/index_documents.cpp $(RAG_SOURCES) $(HEADERS)
@@ -120,8 +124,13 @@ test-rag: tests/rag_stage2_test.cpp $(RAG_SOURCES) $(HEADERS)
 	$(CXX) -o tests/rag_stage2_test tests/rag_stage2_test.cpp $(RAG_SOURCES) $(CXXFLAGS)
 	./tests/rag_stage2_test
 
-test: test-api test-rag
+test-rag-stage3: tests/rag_stage3_test.cpp ai_rag/prompt_builder.cpp $(HEADERS)
+	$(CXX) -o tests/rag_stage3_test tests/rag_stage3_test.cpp \
+		ai_rag/prompt_builder.cpp $(CXXFLAGS)
+	./tests/rag_stage3_test
+
+test: test-api test-rag test-rag-stage3
 
 clean:
-	rm -f server tests/api_router_test tests/rag_stage2_test tools/index_documents \
+	rm -f server tests/api_router_test tests/rag_stage2_test tests/rag_stage3_test tools/index_documents \
 		tools/search_index
