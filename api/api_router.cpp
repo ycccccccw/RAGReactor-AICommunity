@@ -1,15 +1,20 @@
 #include "api_router.h"
 #include "../ai_rag/rag_service.h"
+#include "sse_stream.h"
 
 #include <boost/json.hpp>
 #include <atomic>
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 namespace json = boost::json;
 
 namespace
 {
 std::atomic<unsigned long long> request_sequence(0);
+std::atomic<unsigned int> active_model_streams(0);
+const unsigned int MAX_ACTIVE_MODEL_STREAMS = 16;
 
 std::string next_request_id()
 {
@@ -44,14 +49,6 @@ json::array source_documents(const std::vector<rag::SearchResult> &results)
     return documents;
 }
 
-std::size_t utf8_split_position(const std::string &text)
-{
-    std::size_t position = text.size() / 2;
-    while (position < text.size() && position > 0 &&
-           (static_cast<unsigned char>(text[position]) & 0xC0u) == 0x80u)
-        ++position;
-    return position;
-}
 }
 
 ApiResponse ApiRouter::route(const ApiRequest &request)
@@ -67,6 +64,10 @@ ApiResponse ApiRouter::route(const ApiRequest &request)
     {
         if (request.method != "POST")
             return error(405, "METHOD_NOT_ALLOWED", "only POST is allowed for this endpoint");
+        if (!request.authenticated)
+            return error(401, "AUTH_REQUIRED", "a valid login session is required");
+        if (!request.csrf_valid)
+            return error(403, "CSRF_REJECTED", "missing or invalid CSRF token");
         return ask(request);
     }
 
@@ -133,6 +134,106 @@ ApiResponse ApiRouter::ask(const ApiRequest &request)
     }
 
     const std::string request_id = next_request_id();
+    if (stream)
+    {
+        ApiResponse response;
+        response.status = 200;
+        response.reason = "OK";
+        response.content_type = "text/event-stream; charset=utf-8";
+        response.sse = true;
+        response.close_connection = true;
+        response.stream_state = std::make_shared<SseStream>();
+        // Send headers immediately. Retrieval and model I/O run outside the original
+        // WebServer business pool, so login/upload/static requests remain responsive.
+        response.stream_chunks.push_back(": connected\n\n");
+
+        const std::shared_ptr<SseStream> state = response.stream_state;
+        if (active_model_streams.fetch_add(1) >= MAX_ACTIVE_MODEL_STREAMS)
+        {
+            active_model_streams.fetch_sub(1);
+            return error(503, "STREAM_LIMIT_REACHED",
+                         "too many active model streams; retry later");
+        }
+        std::thread([state, question, top_k, request_id]() {
+            struct ActiveStreamGuard
+            {
+                ~ActiveStreamGuard() { active_model_streams.fetch_sub(1); }
+            } active_stream_guard;
+            const auto started = std::chrono::steady_clock::now();
+            long long ttft_ms = -1;
+            try
+            {
+                rag::PreparedRag prepared = rag::RagService::instance().prepare(
+                    question, static_cast<std::size_t>(top_k));
+                if (state->canceled())
+                {
+                    state->finish();
+                    return;
+                }
+
+                json::object sources;
+                sources["request_id"] = request_id;
+                sources["documents"] = source_documents(prepared.sources);
+                if (!state->push(sse_event("sources", sources)))
+                {
+                    state->finish();
+                    return;
+                }
+
+                bool emitted_delta = false;
+                const auto emit_delta = [&](const std::string &text) {
+                        emitted_delta = true;
+                        if (ttft_ms < 0)
+                            ttft_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - started).count();
+                        json::object delta;
+                        delta["text"] = text;
+                        return state->push(sse_event("delta", delta));
+                    };
+                try
+                {
+                    rag::RagService::instance().stream_answer(
+                        prepared, emit_delta, state->cancellation_flag());
+                }
+                catch (...)
+                {
+                    // A retry is safe only before the first token. Retrying after a
+                    // partial answer would duplicate content in the browser.
+                    if (emitted_delta || state->canceled()) throw;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    rag::RagService::instance().stream_answer(
+                        prepared, emit_delta, state->cancellation_flag());
+                }
+
+                if (!state->canceled())
+                {
+                    json::object done;
+                    done["finish_reason"] = "stop";
+                    done["ttft_ms"] = ttft_ms;
+                    done["total_ms"] =
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started).count();
+                    state->push(sse_event("done", done));
+                }
+            }
+            catch (const std::exception &exception)
+            {
+                if (!state->canceled())
+                {
+                    json::object failure;
+                    failure["code"] = "RAG_STREAM_ERROR";
+                    failure["message"] = exception.what();
+                    state->push(sse_event("error", failure));
+                    json::object done;
+                    done["finish_reason"] = "error";
+                    state->push(sse_event("done", done));
+                }
+            }
+            state->finish();
+        }).detach();
+        return response;
+    }
+
     rag::RagAnswer rag_answer;
     try
     {
@@ -142,35 +243,6 @@ ApiResponse ApiRouter::ask(const ApiRequest &request)
     catch (const std::exception &exception)
     {
         return error(502, "RAG_UPSTREAM_ERROR", exception.what());
-    }
-
-    if (stream)
-    {
-        ApiResponse response;
-        response.status = 200;
-        response.reason = "OK";
-        response.content_type = "text/event-stream; charset=utf-8";
-        response.sse = true;
-        response.close_connection = true;
-
-        json::object sources;
-        sources["request_id"] = request_id;
-        sources["documents"] = source_documents(rag_answer.sources);
-        response.stream_chunks.push_back(sse_event("sources", sources));
-
-        const std::size_t split = utf8_split_position(rag_answer.text);
-        json::object first_delta;
-        first_delta["text"] = rag_answer.text.substr(0, split);
-        response.stream_chunks.push_back(sse_event("delta", first_delta));
-
-        json::object second_delta;
-        second_delta["text"] = rag_answer.text.substr(split);
-        response.stream_chunks.push_back(sse_event("delta", second_delta));
-
-        json::object done;
-        done["finish_reason"] = "stop";
-        response.stream_chunks.push_back(sse_event("done", done));
-        return response;
     }
 
     json::object payload;
@@ -201,6 +273,8 @@ ApiResponse ApiRouter::error(int status, const std::string &code,
     ApiResponse response;
     response.status = status;
     if (status == 400) response.reason = "Bad Request";
+    else if (status == 401) response.reason = "Unauthorized";
+    else if (status == 403) response.reason = "Forbidden";
     else if (status == 404) response.reason = "Not Found";
     else if (status == 405) response.reason = "Method Not Allowed";
     else if (status == 413) response.reason = "Payload Too Large";

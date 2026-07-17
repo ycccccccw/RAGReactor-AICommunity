@@ -39,8 +39,10 @@ float environment_float(const char *name, float fallback)
 
 RagService &RagService::instance()
 {
-    static RagService service;
-    return service;
+    // The service intentionally lives until process termination. Detached model-stream
+    // workers may still be unwinding while main() performs normal static destruction.
+    static RagService *service = new RagService();
+    return *service;
 }
 
 RagService::RagService()
@@ -134,7 +136,7 @@ std::string RagService::provider_name() const
     return configured_ ? "aliyun-bailian" : "not-configured";
 }
 
-RagAnswer RagService::ask(const std::string &question, std::size_t top_k)
+PreparedRag RagService::prepare(const std::string &question, std::size_t top_k)
 {
     std::string error;
     if (!ensure_index(&error)) throw std::runtime_error("knowledge index unavailable: " + error);
@@ -146,15 +148,40 @@ RagAnswer RagService::ask(const std::string &question, std::size_t top_k)
     }), results.end());
     if (results.empty())
     {
-        RagAnswer answer;
-        answer.text = "本地知识库中没有找到与该问题足够相关的内容，因此我无法基于知识库回答。";
-        return answer;
+        PreparedRag prepared;
+        prepared.fallback_answer =
+            "本地知识库中没有找到与该问题足够相关的内容，因此我无法基于知识库回答。";
+        return prepared;
     }
 
+    PreparedRag prepared;
+    prepared.sources = std::move(results);
+    prepared.prompt = prompt_builder_.build(question, prepared.sources);
+    prepared.used_knowledge = true;
+    return prepared;
+}
+
+void RagService::stream_answer(
+    const PreparedRag &prepared,
+    const std::function<bool(const std::string &)> &on_delta,
+    const std::atomic<bool> &canceled) const
+{
+    if (!prepared.used_knowledge)
+    {
+        if (!canceled.load()) on_delta(prepared.fallback_answer);
+        return;
+    }
+    llm_->stream_answer(prepared.prompt, on_delta, canceled);
+}
+
+RagAnswer RagService::ask(const std::string &question, std::size_t top_k)
+{
+    PreparedRag prepared = prepare(question, top_k);
     RagAnswer answer;
-    answer.sources = std::move(results);
-    answer.text = llm_->answer(prompt_builder_.build(question, answer.sources));
-    answer.used_knowledge = true;
+    answer.sources = prepared.sources;
+    answer.used_knowledge = prepared.used_knowledge;
+    answer.text = prepared.used_knowledge ? llm_->answer(prepared.prompt)
+                                         : prepared.fallback_answer;
     return answer;
 }
 }

@@ -94,7 +94,7 @@ else
 
 endif
 
-SOURCES = main.cpp timer/lst_timer.cpp http/http_conn.cpp api/api_router.cpp log/log.cpp \
+SOURCES = main.cpp timer/lst_timer.cpp http/http_conn.cpp api/api_router.cpp api/sse_stream.cpp log/log.cpp \
 	CGImysql/sql_connection_pool.cpp webserver.cpp sub_reactor.cpp config.cpp $(RAG_SOURCES) \
 	ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
 	ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/rag_service.cpp
@@ -105,8 +105,8 @@ RAG_SOURCES = ai_rag/document_loader.cpp ai_rag/text_splitter.cpp \
 server: $(SOURCES) $(HEADERS)
 	$(CXX) -o server $(SOURCES) $(CXXFLAGS) -lpthread -lmysqlclient -lcrypto -lboost_json -lcurl
 
-test-api: tests/api_router_test.cpp api/api_router.cpp api/api_router.h $(RAG_SOURCES)
-	$(CXX) -o tests/api_router_test tests/api_router_test.cpp api/api_router.cpp \
+test-api: tests/api_router_test.cpp api/api_router.cpp api/api_router.h api/sse_stream.cpp $(RAG_SOURCES)
+	$(CXX) -o tests/api_router_test tests/api_router_test.cpp api/api_router.cpp api/sse_stream.cpp \
 		$(RAG_SOURCES) ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
 		ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/rag_service.cpp \
 		$(CXXFLAGS) -lboost_json -lcurl -lpthread
@@ -129,8 +129,14 @@ test-rag-stage3: tests/rag_stage3_test.cpp ai_rag/prompt_builder.cpp $(HEADERS)
 		ai_rag/prompt_builder.cpp $(CXXFLAGS)
 	./tests/rag_stage3_test
 
-test: test-api test-rag test-rag-stage3
+test-sse-stream: tests/sse_stream_test.cpp api/sse_stream.cpp api/sse_stream.h
+	$(CXX) -o tests/sse_stream_test tests/sse_stream_test.cpp api/sse_stream.cpp \
+		$(CXXFLAGS) -lpthread
+	./tests/sse_stream_test
+
+test: test-api test-rag test-rag-stage3 test-sse-stream
 
 clean:
-	rm -f server tests/api_router_test tests/rag_stage2_test tests/rag_stage3_test tools/index_documents \
+	rm -f server tests/api_router_test tests/rag_stage2_test tests/rag_stage3_test \
+		tests/sse_stream_test tools/index_documents \
 		tools/search_index

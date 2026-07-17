@@ -126,6 +126,10 @@ void SubReactor::handle_write(int sockfd)
         close_connection(sockfd);
         return;
     }
+    if (conn->stream_should_close()) {
+        close_connection(sockfd);
+        return;
+    }
     if (conn->has_pending_write())
         m_pending_writes.insert(sockfd);
     else
@@ -185,6 +189,7 @@ void SubReactor::expire_idle_connections()
 
 void SubReactor::resume_sse_streams()
 {
+    std::vector<int> finished;
     for (const auto &item : m_connections)
     {
         http_conn *conn = item.second;
@@ -193,13 +198,28 @@ void SubReactor::resume_sse_streams()
             m_pending_writes.insert(item.first);
             refresh_deadline(item.first, SUB_REACTOR_WRITE_TIMEOUT);
         }
+        if (conn->stream_should_close()) finished.push_back(item.first);
+    }
+    for (int sockfd : finished) close_connection(sockfd);
+}
+
+void SubReactor::retry_pending_writes()
+{
+    // EPOLLONESHOT can miss an immediately-writable transition when a nonblocking
+    // send reaches EAGAIN and rearms EPOLLOUT. Retry only connections that still
+    // own unsent response bytes; write() preserves the exact byte offset and will
+    // return EAGAIN again without blocking if the socket is genuinely full.
+    std::vector<int> pending(m_pending_writes.begin(), m_pending_writes.end());
+    for (int fd : pending)
+    {
+        if (m_connections.find(fd) != m_connections.end())
+            handle_write(fd);
     }
 }
 
 void SubReactor::run()
 {
     epoll_event events[1024];
-    time_t last_write_retry = 0;
     while (m_running.load()) {
         int count = epoll_wait(m_epollfd, events, 1024, 100);
         if (count < 0 && errno != EINTR) break;
@@ -222,13 +242,7 @@ void SubReactor::run()
             }
         }
         resume_sse_streams();
-        time_t now = time(nullptr);
-        if (now != last_write_retry) {
-            last_write_retry = now;
-            std::vector<int> pending_writes(m_pending_writes.begin(), m_pending_writes.end());
-            for (int fd : pending_writes)
-                if (m_connections.find(fd) != m_connections.end()) handle_write(fd);
-        }
+        retry_pending_writes();
         expire_idle_connections();
     }
     std::vector<int> sockets;

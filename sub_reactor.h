@@ -41,6 +41,7 @@ private:
     void refresh_deadline(int sockfd, int timeout_seconds);
     void expire_idle_connections();
     void resume_sse_streams();
+    void retry_pending_writes();
     bool dispatch(http_conn *conn);
 
     WebServer *m_server;

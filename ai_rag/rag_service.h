@@ -11,12 +11,22 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <functional>
 
 namespace rag
 {
 struct RagAnswer
 {
     std::string text;
+    std::vector<SearchResult> sources;
+    bool used_knowledge = false;
+};
+
+struct PreparedRag
+{
+    std::string prompt;
+    std::string fallback_answer;
     std::vector<SearchResult> sources;
     bool used_knowledge = false;
 };
@@ -29,6 +39,10 @@ public:
     bool configured() const { return configured_; }
     bool index_ready() const;
     std::string provider_name() const;
+    PreparedRag prepare(const std::string &question, std::size_t top_k);
+    void stream_answer(const PreparedRag &prepared,
+                       const std::function<bool(const std::string &)> &on_delta,
+                       const std::atomic<bool> &canceled) const;
     RagAnswer ask(const std::string &question, std::size_t top_k);
 
 private:

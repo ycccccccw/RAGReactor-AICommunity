@@ -4,6 +4,7 @@
 #include <boost/json/value.hpp>
 
 #include <string>
+#include <functional>
 
 namespace rag
 {
@@ -14,6 +15,9 @@ public:
 
     boost::json::value post(const std::string &url, const std::string &api_key,
                             const boost::json::value &body) const;
+    void post_stream(const std::string &url, const std::string &api_key,
+                     const boost::json::value &body,
+                     const std::function<bool(const std::string &)> &on_data) const;
 
 private:
     long connect_timeout_ms_;

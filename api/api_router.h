@@ -2,7 +2,10 @@
 #define RAGREACTOR_API_ROUTER_H
 
 #include <string>
+#include <memory>
 #include <vector>
+
+class SseStream;
 
 struct ApiRequest
 {
@@ -10,6 +13,8 @@ struct ApiRequest
     std::string path;
     std::string content_type;
     std::string accept;
+    bool authenticated = false;
+    bool csrf_valid = false;
     std::string body;
 };
 
@@ -20,6 +25,7 @@ struct ApiResponse
     std::string content_type = "application/json; charset=utf-8";
     std::string body;
     std::vector<std::string> stream_chunks;
+    std::shared_ptr<SseStream> stream_state;
     bool sse = false;
     bool close_connection = false;
 };

@@ -26,7 +26,10 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <memory>
 using namespace std;
+
+class SseStream;
 
 
 #include "../lock/locker.h"
@@ -92,6 +95,7 @@ public:
     bool has_pending_write() const { return bytes_to_send > 0; }
     bool has_buffered_request() const { return m_read_idx > 0 && !m_sse_streaming; }
     bool has_pending_stream() const { return m_sse_streaming; }
+    bool stream_should_close() const { return m_sse_close_ready; }
     bool resume_sse_if_due();
     sockaddr_in *get_address()
     {
@@ -156,6 +160,7 @@ private:
     char *m_host;
     char *m_content_type;
     char *m_accept;
+    char *m_csrf_token;
     char *m_cookie;
     long m_content_length;
 
@@ -172,8 +177,11 @@ private:
     bool m_dynamic_response;
     bool m_sse_streaming;
     std::vector<std::string> m_sse_chunks;
+    std::shared_ptr<SseStream> m_sse_state;
     std::size_t m_sse_chunk_index;
+    bool m_sse_close_ready;
     std::chrono::steady_clock::time_point m_sse_next_send;
+    std::chrono::steady_clock::time_point m_sse_last_send;
     char *doc_root; //网站根目录地址
     std::string m_login_user;
     std::string m_set_cookie_sid;

@@ -4,6 +4,8 @@
 #include "http_json_client.h"
 
 #include <string>
+#include <atomic>
+#include <functional>
 
 namespace rag
 {
@@ -14,6 +16,9 @@ public:
               std::size_t max_output_tokens = 800);
 
     std::string answer(const std::string &prompt) const;
+    void stream_answer(const std::string &prompt,
+                       const std::function<bool(const std::string &)> &on_delta,
+                       const std::atomic<bool> &canceled) const;
     const std::string &model() const { return model_; }
 
 private:

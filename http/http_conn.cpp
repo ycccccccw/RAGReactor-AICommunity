@@ -1,6 +1,7 @@
 #include "http_conn.h"
 #include "password_hash.h"
 #include "../api/api_router.h"
+#include "../api/sse_stream.h"
 #include <mysql/mysql.h>
 #include <openssl/rand.h>
 #include <fstream>
@@ -190,6 +191,8 @@ struct token_bucket
 
 static locker rate_limit_lock;
 static map<string, token_bucket> rate_limit_buckets;
+static locker community_page_init_lock;
+static bool community_page_initialized = false;
 
 static const int MAX_UPLOAD_BODY_SIZE = 1024 * 512;
 
@@ -656,6 +659,12 @@ void (*http_conn::m_completion_cb)(http_conn *, int, uint64_t, PROCESS_RESULT) =
 
 //关闭连接
 void http_conn::close_conn(bool real_close){
+    if (m_sse_state)
+    {
+        m_sse_state->cancel();
+        m_sse_state.reset();
+    }
+    m_sse_streaming = false;
     if(real_close && (m_sockfd != -1)){
         printf("close %d\n", m_sockfd);
         removefd(m_epollfd, m_sockfd);
@@ -767,6 +776,7 @@ void http_conn::reset_request(bool preserve_buffered_data)
     m_cookie = 0;
     m_content_type = 0;
     m_accept = 0;
+    m_csrf_token = 0;
     m_login_user.clear();
     m_set_cookie_sid.clear();
     m_start_line = 0;
@@ -781,7 +791,10 @@ void http_conn::reset_request(bool preserve_buffered_data)
     m_dynamic_response = false;
     m_sse_streaming = false;
     m_sse_chunks.clear();
+    if (m_sse_state) m_sse_state->cancel();
+    m_sse_state.reset();
     m_sse_chunk_index = 0;
+    m_sse_close_ready = false;
     cgi = 0;                                //cgi=1 标志是POST请求
 
     //初始化清空缓冲区
@@ -932,6 +945,12 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
         text += 7;
         text += strspn(text, " \t");
         m_cookie = text;
+    }
+    else if (strncasecmp(text, "X-CSRF-Token:", 13) == 0)
+    {
+        text += 13;
+        text += strspn(text, " \t");
+        m_csrf_token = text;
     }
     else if (strncasecmp(text, "Content-Type:", 13) == 0)
     {
@@ -1326,7 +1345,12 @@ if (csrf_token_from_form.empty() ||
 
     LOG_INFO("upload db saved");
 
-    if (!rebuild_community_page())
+    community_page_init_lock.lock();
+    const bool community_rebuilt = rebuild_community_page();
+    if (community_rebuilt) community_page_initialized = true;
+    community_page_init_lock.unlock();
+
+    if (!community_rebuilt)
     {
         LOG_INFO("upload warning: rebuild community page failed");
     }
@@ -1357,6 +1381,12 @@ http_conn::HTTP_CODE http_conn::do_request()
 
     if (current_url.compare(0, 5, "/api/") == 0)
     {
+        if (current_url == "/api/ask" &&
+            !allow_by_token_bucket("rag_ip:" + client_ip, 4, 0.5))
+        {
+            LOG_INFO("RAG rate limit rejected, ip=%s", client_ip.c_str());
+            return TOO_MANY_REQUESTS;
+        }
         return API_RESPONSE;
     }
 
@@ -1382,7 +1412,9 @@ http_conn::HTTP_CODE http_conn::do_request()
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
     }
-    else if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
+    else if (cgi == 1 &&
+             (strcmp(m_url, "/2CGISQL.cgi") == 0 ||
+              strcmp(m_url, "/3CGISQL.cgi") == 0))
     {
         char flag = m_url[1];
 
@@ -1404,7 +1436,7 @@ http_conn::HTTP_CODE http_conn::do_request()
             password[j] = m_string[i];
         password[j] = '\0';
 
-        if (*(p + 1) == '3')
+        if (strcmp(m_url, "/3CGISQL.cgi") == 0)
         {
             string user_name(name);
             string hashed_password = password_hash::make_password_hash(password);
@@ -1436,7 +1468,7 @@ http_conn::HTTP_CODE http_conn::do_request()
                 strcpy(m_url, "/registerError.html");
             }
         }
-        else if (*(p + 1) == '2')
+        else if (strcmp(m_url, "/2CGISQL.cgi") == 0)
         {
             string login_ip_key = "login_fail_ip:" + client_ip;
             string login_user_key = string("login_fail_user:") + name;
@@ -1480,13 +1512,13 @@ http_conn::HTTP_CODE http_conn::do_request()
     bool need_login = false;
 
     if (strcmp(m_url, "/welcome.html") == 0 ||
+        strcmp(m_url, "/rag.html") == 0 ||
         strcmp(m_url, "/upload.html") == 0 ||
         strcmp(m_url, "/community.html") == 0 ||
         strcmp(m_url, "/upload") == 0 ||
-        strncmp(m_url, "/uploads/", 9) == 0 ||
-        *(p + 1) == '5' ||
-        *(p + 1) == '6' ||
-        *(p + 1) == '7')
+        strcmp(m_url, "/5") == 0 ||
+        strcmp(m_url, "/6") == 0 ||
+        strcmp(m_url, "/7") == 0)
     {
         need_login = true;
     }
@@ -1497,35 +1529,49 @@ http_conn::HTTP_CODE http_conn::do_request()
         p = strrchr(m_url, '/');
     }
 
-    if (*(p + 1) == '0')
+    // Rebuild once after each server restart so the generated page reflects every
+    // post currently stored in the database. Uploads rebuild it again immediately.
+    if (strcmp(m_url, "/community.html") == 0)
+    {
+        community_page_init_lock.lock();
+        if (!community_page_initialized)
+        {
+            connectionRAII mysqlcon(&mysql, m_conn_pool);
+            if (mysql && rebuild_community_page())
+                community_page_initialized = true;
+        }
+        community_page_init_lock.unlock();
+    }
+
+    if (strcmp(m_url, "/0") == 0)
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/register.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
     }
-    else if (*(p + 1) == '1')
+    else if (strcmp(m_url, "/1") == 0)
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/log.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
     }
-    else if (*(p + 1) == '5')
+    else if (strcmp(m_url, "/5") == 0)
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/picture.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
     }
-    else if (*(p + 1) == '6')
+    else if (strcmp(m_url, "/6") == 0)
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/video.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
     }
-    else if (*(p + 1) == '7')
+    else if (strcmp(m_url, "/7") == 0)
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/fans.html");
@@ -1549,6 +1595,7 @@ http_conn::HTTP_CODE http_conn::do_request()
     int fd = open(m_real_file, O_RDONLY);
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
+
     return FILE_REQUEST;
 }
 
@@ -1573,6 +1620,10 @@ bool http_conn::prepare_api_response()
     request.path = m_url ? m_url : "";
     request.content_type = m_content_type ? m_content_type : "";
     request.accept = m_accept ? m_accept : "";
+    request.authenticated = check_session(m_cookie);
+    const std::string expected_csrf = get_session_csrf_token(m_cookie);
+    request.csrf_valid = request.authenticated && m_csrf_token &&
+                         !expected_csrf.empty() && expected_csrf == m_csrf_token;
     if (m_content_length > 0 && m_string)
         request.body.assign(m_string, static_cast<std::size_t>(m_content_length));
 
@@ -1591,7 +1642,9 @@ bool http_conn::prepare_api_response()
             return false;
         m_sse_streaming = true;
         m_sse_chunks = response.stream_chunks;
+        m_sse_state = response.stream_state;
         m_sse_chunk_index = 1;
+        m_sse_last_send = std::chrono::steady_clock::now();
         m_dynamic_body = m_sse_chunks.front();
 
         if (!add_response("Content-Type:%s\r\n", response.content_type.c_str()) ||
@@ -1618,17 +1671,38 @@ bool http_conn::prepare_api_response()
 bool http_conn::resume_sse_if_due()
 {
     if (!m_sse_streaming || bytes_to_send > 0 ||
-        m_sse_chunk_index >= m_sse_chunks.size() ||
         std::chrono::steady_clock::now() < m_sse_next_send)
         return false;
 
-    m_dynamic_body = m_sse_chunks[m_sse_chunk_index++];
+    if (m_sse_chunk_index < m_sse_chunks.size())
+        m_dynamic_body = m_sse_chunks[m_sse_chunk_index++];
+    else if (m_sse_state)
+    {
+        if (!m_sse_state->try_pop(m_dynamic_body))
+        {
+            if (m_sse_state->finished_and_empty())
+            {
+                m_sse_streaming = false;
+                m_sse_state.reset();
+                m_sse_close_ready = true;
+            }
+            else if (std::chrono::steady_clock::now() - m_sse_last_send >=
+                     std::chrono::seconds(15))
+                m_dynamic_body = ": heartbeat\n\n";
+            else
+                return false;
+        }
+    }
+    else
+        return false;
+
     m_write_idx = 0;
     bytes_have_send = 0;
     bytes_to_send = static_cast<int>(m_dynamic_body.size());
     m_iv[0].iov_base = const_cast<char *>(m_dynamic_body.data());
     m_iv[0].iov_len = m_dynamic_body.size();
     m_iv_count = 1;
+    m_sse_last_send = std::chrono::steady_clock::now();
     arm_write();
     return true;
 }
@@ -1928,6 +2002,7 @@ bool http_conn::add_linger()
 {
     return add_response("Connection:%s\r\n", (m_linger == true) ? "keep-alive" : "close");
 }
+
 bool http_conn::add_session_cookie()
 {
     if (m_set_cookie_sid.empty())
@@ -2142,6 +2217,23 @@ bool http_conn::write()
                 m_sse_next_send = std::chrono::steady_clock::now() +
                                   std::chrono::milliseconds(250);
                 modfd(m_epollfd, m_sockfd, EPOLLIN, m_TRIGMode);
+                return true;
+            }
+            if (m_sse_streaming && m_sse_state)
+            {
+                m_dynamic_body.clear();
+                m_iv_count = 0;
+                if (m_sse_state->finished_and_empty())
+                {
+                    m_sse_streaming = false;
+                    m_sse_state.reset();
+                    m_sse_close_ready = true;
+                }
+                else
+                {
+                    m_sse_next_send = std::chrono::steady_clock::now();
+                    modfd(m_epollfd, m_sockfd, EPOLLIN, m_TRIGMode);
+                }
                 return true;
             }
             if (m_sse_streaming)

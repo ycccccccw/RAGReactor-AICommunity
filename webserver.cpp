@@ -269,7 +269,9 @@ void WebServer::eventListen(){
     ret = bind(m_listenfd, (struct sockaddr*)&address, sizeof(address));
     assert(ret >= 0);
     //监听
-    ret = listen(m_listenfd, 5);
+    // Browsers open several parallel connections for images and other assets.
+    // A backlog of 5 is too small even for one media-heavy community page.
+    ret = listen(m_listenfd, SOMAXCONN);
     assert(ret >= 0);
     LOG_INFO("%s%d", "listen the port ", m_port);
 
