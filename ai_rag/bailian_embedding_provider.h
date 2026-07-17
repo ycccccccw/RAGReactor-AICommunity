@@ -10,7 +10,9 @@ class BailianEmbeddingProvider : public EmbeddingProvider
 {
 public:
     BailianEmbeddingProvider(std::string base_url, std::string api_key,
-                             std::string model, std::size_t dimension = 1024);
+                             std::string model, std::size_t dimension = 1024,
+                             long connect_timeout_ms = 3000,
+                             long request_timeout_ms = 10000);
 
     std::vector<float> embed(const std::string &text) const override;
     std::size_t dimension() const override { return dimension_; }

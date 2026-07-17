@@ -18,10 +18,11 @@ std::string trim_slash(std::string value)
 }
 
 LlmClient::LlmClient(std::string base_url, std::string api_key,
-                     std::string model, std::size_t max_output_tokens)
+                     std::string model, std::size_t max_output_tokens,
+                     long connect_timeout_ms, long request_timeout_ms)
     : base_url_(trim_slash(std::move(base_url))), api_key_(std::move(api_key)),
       model_(std::move(model)), max_output_tokens_(max_output_tokens),
-      client_(3000, 60000)
+      client_(connect_timeout_ms, request_timeout_ms)
 {
     if (base_url_.empty() || api_key_.empty() || model_.empty())
         throw std::invalid_argument("invalid Bailian LLM configuration");

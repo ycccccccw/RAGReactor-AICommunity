@@ -13,6 +13,8 @@ tests/api_router_test
 tests/rag_stage2_test
 tests/rag_stage3_test
 tests/sse_stream_test
+tests/resilience_test
+tests/retrieval_upgrade_test
 tools/index_documents
 tools/search_index
 *.tmp
@@ -22,6 +24,7 @@ server
 # Generated vector indexes
 knowledge/index/
 *.ragvec
+*.hnsw
 
 # Runtime user content
 root/uploads/

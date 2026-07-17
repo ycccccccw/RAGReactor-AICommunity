@@ -2,6 +2,7 @@
 #include "password_hash.h"
 #include "../api/api_router.h"
 #include "../api/sse_stream.h"
+#include "../api/metrics.h"
 #include <mysql/mysql.h>
 #include <openssl/rand.h>
 #include <fstream>
@@ -1384,6 +1385,7 @@ http_conn::HTTP_CODE http_conn::do_request()
         if (current_url == "/api/ask" &&
             !allow_by_token_bucket("rag_ip:" + client_ip, 4, 0.5))
         {
+            Metrics::instance().rate_limited.fetch_add(1);
             LOG_INFO("RAG rate limit rejected, ip=%s", client_ip.c_str());
             return TOO_MANY_REQUESTS;
         }
@@ -1636,6 +1638,11 @@ bool http_conn::prepare_api_response()
 
     if (!add_status_line(response.status, response.reason.c_str()))
         return false;
+    if (!response.request_id.empty() &&
+        !add_response("X-Request-ID:%s\r\n", response.request_id.c_str()))
+        return false;
+    LOG_INFO("{\"event\":\"api_response\",\"request_id\":\"%s\",\"path\":\"%s\",\"status\":%d}",
+             response.request_id.c_str(), request.path.c_str(), response.status);
     if (response.sse)
     {
         if (response.stream_chunks.empty())

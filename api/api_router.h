@@ -13,6 +13,7 @@ struct ApiRequest
     std::string path;
     std::string content_type;
     std::string accept;
+    std::string request_id;
     bool authenticated = false;
     bool csrf_valid = false;
     std::string body;
@@ -28,6 +29,7 @@ struct ApiResponse
     std::shared_ptr<SseStream> stream_state;
     bool sse = false;
     bool close_connection = false;
+    std::string request_id;
 };
 
 class ApiRouter
@@ -38,10 +40,12 @@ public:
     static ApiResponse route(const ApiRequest &request);
 
 private:
-    static ApiResponse health();
+    static ApiResponse health(const std::string &request_id);
+    static ApiResponse metrics(const std::string &request_id);
     static ApiResponse ask(const ApiRequest &request);
     static ApiResponse error(int status, const std::string &code,
-                             const std::string &message);
+                             const std::string &message,
+                             const std::string &request_id = "");
 };
 
 #endif

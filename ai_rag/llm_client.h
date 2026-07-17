@@ -13,7 +13,9 @@ class LlmClient
 {
 public:
     LlmClient(std::string base_url, std::string api_key, std::string model,
-              std::size_t max_output_tokens = 800);
+              std::size_t max_output_tokens = 800,
+              long connect_timeout_ms = 3000,
+              long request_timeout_ms = 30000);
 
     std::string answer(const std::string &prompt) const;
     void stream_answer(const std::string &prompt,

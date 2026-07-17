@@ -16,7 +16,18 @@ int main()
     health_request.path = "/api/health";
     ApiResponse health = ApiRouter::route(health_request);
     assert(health.status == 200);
+    assert(!health.request_id.empty());
     assert(json::parse(health.body).as_object().at("status") == "ok");
+    assert(json::parse(health.body).as_object().contains("semantic_cache_entries"));
+
+    ApiRequest metrics_request;
+    metrics_request.method = "GET";
+    metrics_request.path = "/api/metrics";
+    assert(ApiRouter::route(metrics_request).status == 401);
+    metrics_request.authenticated = true;
+    ApiResponse metrics = ApiRouter::route(metrics_request);
+    assert(metrics.status == 200);
+    assert(json::parse(metrics.body).as_object().contains("api_requests_total"));
 
     ApiRequest ask_request;
     ask_request.method = "POST";
@@ -34,6 +45,7 @@ int main()
     ask_request.body = "{bad json}";
     ApiResponse invalid_json = ApiRouter::route(ask_request);
     assert(invalid_json.status == 400);
+    assert(json::parse(invalid_json.body).as_object().contains("request_id"));
 
     ask_request.body = R"({"question":"stream","stream":true})";
     ApiResponse stream = ApiRouter::route(ask_request);

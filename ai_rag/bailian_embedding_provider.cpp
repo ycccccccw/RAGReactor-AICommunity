@@ -19,9 +19,10 @@ std::string trim_slash(std::string value)
 
 BailianEmbeddingProvider::BailianEmbeddingProvider(
     std::string base_url, std::string api_key, std::string model,
-    std::size_t dimension)
+    std::size_t dimension, long connect_timeout_ms, long request_timeout_ms)
     : base_url_(trim_slash(std::move(base_url))), api_key_(std::move(api_key)),
-      model_(std::move(model)), dimension_(dimension), client_(3000, 30000)
+      model_(std::move(model)), dimension_(dimension),
+      client_(connect_timeout_ms, request_timeout_ms)
 {
     if (base_url_.empty() || api_key_.empty() || model_.empty() || dimension_ == 0)
         throw std::invalid_argument("invalid Bailian embedding configuration");
