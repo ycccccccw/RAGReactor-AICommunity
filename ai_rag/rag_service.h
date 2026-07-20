@@ -41,6 +41,13 @@ struct PreparedRag
     bool cache_hit = false;
     bool rerank_applied = false;
     bool rerank_fallback = false;
+    bool cacheable = true;
+};
+
+struct RagQueryOptions
+{
+    bool include_community = false;
+    std::string username;
 };
 
 class CircuitOpenError : public std::runtime_error
@@ -57,11 +64,16 @@ public:
     bool configured() const { return configured_; }
     bool index_ready() const;
     std::string provider_name() const;
-    PreparedRag prepare(const std::string &question, std::size_t top_k);
+    PreparedRag prepare(const std::string &question, std::size_t top_k,
+                        const RagQueryOptions &options = {});
     void stream_answer(const PreparedRag &prepared,
                        const std::function<bool(const std::string &)> &on_delta,
                        const std::atomic<bool> &canceled);
-    RagAnswer ask(const std::string &question, std::size_t top_k);
+    RagAnswer ask(const std::string &question, std::size_t top_k,
+                  const RagQueryOptions &options = {});
+    std::vector<SearchResult> retrieve(const std::string &query, std::size_t top_k,
+                                       bool include_knowledge, bool include_community,
+                                       const std::string &exclude_community_id = "");
     std::size_t cache_size() const { return cache_.size(); }
     bool circuit_open() const { return circuit_.open(); }
     std::string retrieval_mode() const;
@@ -76,6 +88,7 @@ private:
     std::string document_directory_;
     std::string index_path_;
     std::string hnsw_index_path_;
+    std::string community_index_path_;
     float relevance_threshold_;
     std::size_t retrieval_candidates_;
     std::size_t rerank_top_n_;

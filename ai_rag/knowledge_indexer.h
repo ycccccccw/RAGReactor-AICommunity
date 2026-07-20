@@ -2,7 +2,7 @@
 #define RAGREACTOR_KNOWLEDGE_INDEXER_H
 
 #include "document_loader.h"
-#include "embedding_provider.h"
+#include "content_indexer.h"
 #include "text_splitter.h"
 #include "vector_store.h"
 
@@ -11,12 +11,6 @@
 
 namespace rag
 {
-struct IndexBuildStats
-{
-    std::size_t documents = 0;
-    std::size_t chunks = 0;
-};
-
 class KnowledgeIndexer
 {
 public:

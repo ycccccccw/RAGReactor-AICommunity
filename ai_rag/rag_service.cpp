@@ -2,6 +2,7 @@
 
 #include "knowledge_indexer.h"
 #include "text_splitter.h"
+#include "../community/question_interest_store.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -65,7 +66,9 @@ RagService::RagService()
       index_path_(environment("RAG_INDEX_PATH", "knowledge/index/bailian-v4-1024.ragvec")),
       hnsw_index_path_(environment("RAG_HNSW_INDEX_PATH",
                                    "knowledge/index/bailian-v4-1024.hnsw")),
-      relevance_threshold_(environment_float("RAG_RELEVANCE_THRESHOLD", 0.40f)),
+      community_index_path_(environment("COMMUNITY_INDEX_PATH",
+                                        "knowledge/index/community-bailian-v4-1024.ragvec")),
+      relevance_threshold_(environment_float("RAG_RELEVANCE_THRESHOLD", 0.45f)),
       retrieval_candidates_(environment_size("RAG_RERANK_CANDIDATES", 20)),
       rerank_top_n_(environment_size("RAG_RERANK_TOP_N", 5)),
       prompt_builder_(environment_size("RAG_MAX_PROMPT_BYTES", 12000)),
@@ -96,17 +99,17 @@ RagService::RagService()
         embedding_ = std::make_unique<BailianEmbeddingProvider>(
             base_url, key, embedding_model,
             environment_size("RAG_EMBEDDING_DIMENSION", 1024),
-            environment_size("RAG_CONNECT_TIMEOUT_MS", 3000),
+            environment_size("RAG_CONNECT_TIMEOUT_MS", 5000),
             environment_size("RAG_EMBEDDING_TIMEOUT_MS", 10000));
         llm_ = std::make_unique<LlmClient>(
             base_url, key, llm_model,
             environment_size("RAG_MAX_OUTPUT_TOKENS", 800),
-            environment_size("RAG_CONNECT_TIMEOUT_MS", 3000),
+            environment_size("RAG_CONNECT_TIMEOUT_MS", 5000),
             environment_size("RAG_LLM_TIMEOUT_MS", 30000));
         if (environment_bool("RAG_RERANK_ENABLED", true))
             reranker_ = std::make_unique<BailianRerankProvider>(
                 base_url, key, environment("RAG_RERANK_MODEL", "qwen3-rerank"),
-                environment_size("RAG_CONNECT_TIMEOUT_MS", 3000),
+                environment_size("RAG_CONNECT_TIMEOUT_MS", 5000),
                 environment_size("RAG_RERANK_TIMEOUT_MS", 10000));
         configured_ = true;
     }
@@ -195,17 +198,17 @@ std::string RagService::retrieval_mode() const
     return reranker_ ? "hnsw+bm25+rrf+qwen3-rerank" : "hnsw+bm25+rrf";
 }
 
-PreparedRag RagService::prepare(const std::string &question, std::size_t top_k)
+std::vector<SearchResult> RagService::retrieve(const std::string &query, std::size_t top_k,
+                                               bool include_knowledge, bool include_community,
+                                               const std::string &exclude_community_id)
 {
     std::string error;
     if (!ensure_index(&error)) throw std::runtime_error("knowledge index unavailable: " + error);
-
     if (!circuit_.allow_request()) throw CircuitOpenError();
-
-    PreparedRag prepared;
+    std::vector<float> embedding;
     try
     {
-        prepared.query_embedding = embedding_->embed(question);
+        embedding = embedding_->embed(query);
     }
     catch (...)
     {
@@ -213,6 +216,63 @@ PreparedRag RagService::prepare(const std::string &question, std::size_t top_k)
         throw;
     }
 
+    std::vector<SearchResult> results;
+    if (include_knowledge)
+    {
+        HybridRetriever retriever(store_, hnsw_.get(), &bm25_, retrieval_candidates_);
+        ContentFilter filter;
+        filter.source_types = {"knowledge"};
+        results = retriever.search(query, embedding, retrieval_candidates_, filter);
+    }
+    if (include_community && fs::exists(community_index_path_))
+    {
+        VectorStore community;
+        if (community.load(community_index_path_, &error) && community.dimension() == embedding.size())
+        {
+            Bm25Index community_bm25;
+            community_bm25.build(community);
+            HybridRetriever retriever(community, nullptr, &community_bm25, retrieval_candidates_);
+            ContentFilter filter;
+            filter.source_types = {"community"};
+            auto community_results = retriever.search(
+                query, embedding, retrieval_candidates_, filter);
+            community_results.erase(std::remove_if(community_results.begin(), community_results.end(),
+                [&](const SearchResult &value) {
+                    return !exclude_community_id.empty() &&
+                           value.chunk.source_id == exclude_community_id;
+                }), community_results.end());
+            results.insert(results.end(), community_results.begin(), community_results.end());
+        }
+    }
+    std::sort(results.begin(), results.end(), [](const SearchResult &left, const SearchResult &right) {
+        return left.score > right.score;
+    });
+    if (reranker_ && !results.empty())
+    {
+        try { results = reranker_->rerank(query, results, top_k); }
+        catch (...) { if (results.size() > top_k) results.resize(top_k); }
+    }
+    else if (results.size() > top_k) results.resize(top_k);
+    circuit_.record_success();
+    return results;
+}
+
+PreparedRag RagService::prepare(const std::string &question, std::size_t top_k,
+                                const RagQueryOptions &options)
+{
+    std::string error;
+    if (!ensure_index(&error)) throw std::runtime_error("knowledge index unavailable: " + error);
+    if (!circuit_.allow_request()) throw CircuitOpenError();
+
+    PreparedRag prepared;
+    prepared.cacheable = !options.include_community;
+    try { prepared.query_embedding = embedding_->embed(question); }
+    catch (...) { circuit_.record_failure(); throw; }
+
+    if (!options.username.empty())
+        QuestionInterestStore::instance().remember(options.username, prepared.query_embedding);
+
+    if (!options.include_community)
     if (const auto cached = cache_.lookup(prepared.query_embedding))
     {
         prepared.cached_answer = cached->answer;
@@ -223,8 +283,31 @@ PreparedRag RagService::prepare(const std::string &question, std::size_t top_k)
     }
 
     HybridRetriever retriever(store_, hnsw_.get(), &bm25_, retrieval_candidates_);
+    ContentFilter knowledge_only;
+    knowledge_only.source_types = {"knowledge"};
     std::vector<SearchResult> results = retriever.search(
-        question, prepared.query_embedding, retrieval_candidates_);
+        question, prepared.query_embedding, retrieval_candidates_, knowledge_only);
+    if (options.include_community && fs::exists(community_index_path_))
+    {
+        VectorStore community;
+        if (community.load(community_index_path_, &error) &&
+            community.dimension() == prepared.query_embedding.size())
+        {
+            Bm25Index community_bm25;
+            community_bm25.build(community);
+            HybridRetriever community_retriever(
+                community, nullptr, &community_bm25, retrieval_candidates_);
+            ContentFilter community_only;
+            community_only.source_types = {"community"};
+            auto extra = community_retriever.search(
+                question, prepared.query_embedding, retrieval_candidates_, community_only);
+            results.insert(results.end(), extra.begin(), extra.end());
+            std::sort(results.begin(), results.end(), [](const SearchResult &left,
+                                                         const SearchResult &right) {
+                return left.score > right.score;
+            });
+        }
+    }
     bool reranked = false;
     if (reranker_ && !results.empty())
     {
@@ -252,8 +335,8 @@ PreparedRag RagService::prepare(const std::string &question, std::size_t top_k)
         prepared.fallback_answer =
             "本地知识库中没有找到与该问题足够相关的内容，因此我无法基于知识库回答。";
         circuit_.record_success();
-        cache_.put(prepared.query_embedding,
-                   {prepared.fallback_answer, {}, false});
+        if (!options.include_community)
+            cache_.put(prepared.query_embedding, {prepared.fallback_answer, {}, false});
         return prepared;
     }
 
@@ -290,8 +373,9 @@ void RagService::stream_answer(
         if (!canceled.load() && consumer_ready && !complete_answer.empty())
         {
             circuit_.record_success();
-            cache_.put(prepared.query_embedding,
-                       {complete_answer, prepared.sources, prepared.used_knowledge});
+            if (prepared.cacheable)
+                cache_.put(prepared.query_embedding,
+                           {complete_answer, prepared.sources, prepared.used_knowledge});
         }
     }
     catch (...)
@@ -301,9 +385,10 @@ void RagService::stream_answer(
     }
 }
 
-RagAnswer RagService::ask(const std::string &question, std::size_t top_k)
+RagAnswer RagService::ask(const std::string &question, std::size_t top_k,
+                          const RagQueryOptions &options)
 {
-    PreparedRag prepared = prepare(question, top_k);
+    PreparedRag prepared = prepare(question, top_k, options);
     RagAnswer answer;
     answer.sources = prepared.sources;
     answer.used_knowledge = prepared.used_knowledge;
@@ -320,8 +405,9 @@ RagAnswer RagService::ask(const std::string &question, std::size_t top_k)
         {
             answer.text = llm_->answer(prepared.prompt);
             circuit_.record_success();
-            cache_.put(prepared.query_embedding,
-                       {answer.text, answer.sources, answer.used_knowledge});
+            if (prepared.cacheable)
+                cache_.put(prepared.query_embedding,
+                           {answer.text, answer.sources, answer.used_knowledge});
         }
         catch (...)
         {

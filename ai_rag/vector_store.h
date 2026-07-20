@@ -16,7 +16,9 @@ public:
 
     bool add(DocumentChunk chunk, std::string *error = nullptr);
     std::vector<SearchResult> search(const std::vector<float> &query,
-                                     std::size_t top_k) const;
+                                     std::size_t top_k,
+                                     const ContentFilter &filter = ContentFilter()) const;
+    void remove_source(const std::string &source_type, const std::string &source_id);
     bool save(const std::string &path, std::string *error = nullptr) const;
     bool load(const std::string &path, std::string *error = nullptr);
     void clear();

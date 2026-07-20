@@ -3,6 +3,7 @@
 #include "../api/api_router.h"
 #include "../api/sse_stream.h"
 #include "../api/metrics.h"
+#include "../community/mysql_community_store.h"
 #include <mysql/mysql.h>
 #include <openssl/rand.h>
 #include <fstream>
@@ -1014,6 +1015,12 @@ bool http_conn::save_post_to_db(const string &username, const string &content_te
 {
     const char *sql = "INSERT INTO user_posts(username, content_text, file_path, file_type) VALUES(?, ?, ?, ?)";
 
+    if (mysql_autocommit(mysql, 0) != 0)
+    {
+        fprintf(stderr, "mysql begin post transaction error:%s\n", mysql_error(mysql));
+        return false;
+    }
+
     MYSQL_STMT *stmt = mysql_stmt_init(mysql);
     if (stmt == NULL)
     {
@@ -1071,10 +1078,63 @@ bool http_conn::save_post_to_db(const string &username, const string &content_te
             break;
         }
 
+        const unsigned long long post_id = mysql_stmt_insert_id(stmt);
+        const string source_id = std::to_string(post_id);
+        const char *registry_sql =
+            "INSERT INTO ai_content_registry"
+            "(source_type,source_id,author,trust_level,index_status,search_enabled,rag_enabled,source_created_at) "
+            "VALUES('community',?,?,'community_unverified','pending',1,0,CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE author=VALUES(author),index_status='pending',"
+            "search_enabled=1,last_error=NULL";
+        MYSQL_STMT *registry_stmt = mysql_stmt_init(mysql);
+        if (!registry_stmt)
+        {
+            fprintf(stderr, "mysql_stmt_init content registry error\n");
+            break;
+        }
+        bool registry_ok = false;
+        do
+        {
+            if (mysql_stmt_prepare(registry_stmt, registry_sql, strlen(registry_sql)) != 0)
+            {
+                fprintf(stderr, "mysql_stmt_prepare content registry error:%s\n",
+                        mysql_stmt_error(registry_stmt));
+                break;
+            }
+            MYSQL_BIND registry_bind[2];
+            memset(registry_bind, 0, sizeof(registry_bind));
+            unsigned long source_id_len = source_id.size();
+            unsigned long author_len = username.size();
+            registry_bind[0].buffer_type = MYSQL_TYPE_STRING;
+            registry_bind[0].buffer = (void *)source_id.c_str();
+            registry_bind[0].buffer_length = source_id_len;
+            registry_bind[0].length = &source_id_len;
+            registry_bind[1].buffer_type = MYSQL_TYPE_STRING;
+            registry_bind[1].buffer = (void *)username.c_str();
+            registry_bind[1].buffer_length = author_len;
+            registry_bind[1].length = &author_len;
+            if (mysql_stmt_bind_param(registry_stmt, registry_bind) != 0 ||
+                mysql_stmt_execute(registry_stmt) != 0)
+            {
+                fprintf(stderr, "content registry queue error:%s\n", mysql_stmt_error(registry_stmt));
+                break;
+            }
+            registry_ok = true;
+        } while (false);
+        mysql_stmt_close(registry_stmt);
+        if (!registry_ok) break;
+
+        if (mysql_commit(mysql) != 0)
+        {
+            fprintf(stderr, "mysql commit post transaction error:%s\n", mysql_error(mysql));
+            break;
+        }
         success = true;
     } while (false);
 
     mysql_stmt_close(stmt);
+    if (!success) mysql_rollback(mysql);
+    mysql_autocommit(mysql, 1);
     return success;
 }
 
@@ -1144,7 +1204,7 @@ bool http_conn::rebuild_community_page()
 
     mysql_free_result(result);
 
-    string path = string(doc_root) + "/community.html";
+    string path = string(doc_root) + "/community-legacy.html";
     ofstream out(path.c_str());
     if (!out)
         return false;
@@ -1392,6 +1452,16 @@ http_conn::HTTP_CODE http_conn::do_request()
         return API_RESPONSE;
     }
 
+    // Static resources must resolve against the path only. Keeping the query
+    // string in m_url made valid URLs such as /rag.html?community=1 map to a
+    // nonexistent filename and could end as an empty response.
+    char *static_query = m_url ? strchr(m_url, '?') : nullptr;
+    if (static_query)
+    {
+        *static_query = '\0';
+        current_url.assign(m_url);
+    }
+
     if (!allow_request_by_path(client_ip, current_url))
     {
         LOG_INFO("rate limit rejected, ip=%s, url=%s",
@@ -1517,6 +1587,7 @@ http_conn::HTTP_CODE http_conn::do_request()
         strcmp(m_url, "/rag.html") == 0 ||
         strcmp(m_url, "/upload.html") == 0 ||
         strcmp(m_url, "/community.html") == 0 ||
+        strcmp(m_url, "/community-legacy.html") == 0 ||
         strcmp(m_url, "/upload") == 0 ||
         strcmp(m_url, "/5") == 0 ||
         strcmp(m_url, "/6") == 0 ||
@@ -1531,9 +1602,17 @@ http_conn::HTTP_CODE http_conn::do_request()
         p = strrchr(m_url, '/');
     }
 
-    // Rebuild once after each server restart so the generated page reflects every
-    // post currently stored in the database. Uploads rebuild it again immediately.
-    if (strcmp(m_url, "/community.html") == 0)
+    const char *dynamic_feed_value = getenv("COMMUNITY_DYNAMIC_FEED_ENABLED");
+    const bool dynamic_feed_enabled = !dynamic_feed_value ||
+        (strcmp(dynamic_feed_value, "0") != 0 && strcasecmp(dynamic_feed_value, "false") != 0);
+    if (strcmp(m_url, "/community.html") == 0 && !dynamic_feed_enabled)
+    {
+        strcpy(m_url, "/community-legacy.html");
+        p = strrchr(m_url, '/');
+    }
+
+    // The legacy time-ordered page remains available as a feature-flag fallback.
+    if (strcmp(m_url, "/community-legacy.html") == 0)
     {
         community_page_init_lock.lock();
         if (!community_page_initialized)
@@ -1619,17 +1698,34 @@ bool http_conn::prepare_api_response()
 {
     ApiRequest request;
     request.method = method_name();
-    request.path = m_url ? m_url : "";
+    const std::string target = m_url ? m_url : "";
+    const std::size_t query_position = target.find('?');
+    request.path = target.substr(0, query_position);
+    if (query_position != std::string::npos)
+        request.query = target.substr(query_position + 1);
     request.content_type = m_content_type ? m_content_type : "";
     request.accept = m_accept ? m_accept : "";
     request.authenticated = check_session(m_cookie);
+    if (request.authenticated)
+        request.username = get_session_username(m_cookie);
     const std::string expected_csrf = get_session_csrf_token(m_cookie);
     request.csrf_valid = request.authenticated && m_csrf_token &&
                          !expected_csrf.empty() && expected_csrf == m_csrf_token;
     if (m_content_length > 0 && m_string)
         request.body.assign(m_string, static_cast<std::size_t>(m_content_length));
 
-    ApiResponse response = ApiRouter::route(request);
+    ApiResponse response;
+    if (request.path.compare(0, 15, "/api/community/") == 0)
+    {
+        connectionRAII mysqlcon(&mysql, m_conn_pool);
+        MysqlCommunityStore store(mysql);
+        request.community_store = &store;
+        response = ApiRouter::route(request);
+    }
+    else
+    {
+        response = ApiRouter::route(request);
+    }
     m_response_content_type = response.content_type.c_str();
     m_dynamic_body = response.body;
     m_dynamic_response = true;

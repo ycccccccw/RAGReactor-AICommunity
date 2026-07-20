@@ -93,21 +93,29 @@ bool HnswIndex::load(const std::string &path, const VectorStore &store,
 }
 
 std::vector<SearchResult> HnswIndex::search(const std::vector<float> &query,
-                                            std::size_t top_k) const
+                                            std::size_t top_k,
+                                            const ContentFilter &filter) const
 {
     if (!ready() || query.size() != dimension_ || top_k == 0) return {};
     std::vector<float> normalized = normalize(query);
-    const std::size_t count = std::min(top_k, store_->size());
+    const std::size_t count = store_->size();
     auto queue = index_->searchKnn(normalized.data(), count);
-    std::vector<SearchResult> results(queue.size());
-    for (std::size_t i = queue.size(); i > 0; --i)
+    std::vector<SearchResult> candidates;
+    candidates.reserve(queue.size());
+    while (!queue.empty())
     {
         const auto item = queue.top();
         queue.pop();
         if (item.second >= store_->chunks().size()) continue;
-        results[i - 1].chunk = store_->chunks()[item.second];
-        results[i - 1].score = 1.0f - item.first;
+        const DocumentChunk &chunk = store_->chunks()[item.second];
+        if (!filter.matches(chunk)) continue;
+        candidates.push_back({chunk, 1.0f - item.first});
     }
-    return results;
+    std::sort(candidates.begin(), candidates.end(), [](const SearchResult &left,
+                                                       const SearchResult &right) {
+        return left.score > right.score;
+    });
+    if (candidates.size() > top_k) candidates.resize(top_k);
+    return candidates;
 }
 }

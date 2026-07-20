@@ -15,7 +15,10 @@ tests/rag_stage3_test
 tests/sse_stream_test
 tests/resilience_test
 tests/retrieval_upgrade_test
+tests/recommendation_ranker_test
 tools/index_documents
+tools/index_community
+tools/preview_recommendations
 tools/search_index
 *.tmp
 *.o
@@ -28,6 +31,8 @@ knowledge/index/
 
 # Runtime user content
 root/uploads/
+root/community-legacy.html
+backups/
 
 # Bundled/generated artifacts
 webbench-1.5.tar.gz

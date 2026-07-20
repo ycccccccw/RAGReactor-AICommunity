@@ -6,6 +6,7 @@
 #include <vector>
 
 class SseStream;
+class CommunityStore;
 
 struct ApiRequest
 {
@@ -14,9 +15,12 @@ struct ApiRequest
     std::string content_type;
     std::string accept;
     std::string request_id;
+    std::string query;
+    std::string username;
     bool authenticated = false;
     bool csrf_valid = false;
     std::string body;
+    CommunityStore *community_store = nullptr;
 };
 
 struct ApiResponse
@@ -43,6 +47,9 @@ private:
     static ApiResponse health(const std::string &request_id);
     static ApiResponse metrics(const std::string &request_id);
     static ApiResponse ask(const ApiRequest &request);
+    static ApiResponse community_feed(const ApiRequest &request);
+    static ApiResponse community_action(const ApiRequest &request);
+    static ApiResponse community_related(const ApiRequest &request);
     static ApiResponse error(int status, const std::string &code,
                              const std::string &message,
                              const std::string &request_id = "");

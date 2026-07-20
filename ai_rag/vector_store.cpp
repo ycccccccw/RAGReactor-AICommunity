@@ -15,7 +15,7 @@ namespace rag
 namespace
 {
 const char MAGIC[8] = {'R', 'A', 'G', 'V', 'E', 'C', '0', '1'};
-const std::uint32_t FORMAT_VERSION = 1;
+const std::uint32_t FORMAT_VERSION = 2;
 const std::uint64_t MAX_RECORDS = 10000000;
 const std::uint64_t MAX_STRING_BYTES = 16 * 1024 * 1024;
 const std::uint64_t MAX_DIMENSION = 65536;
@@ -93,7 +93,8 @@ float VectorStore::cosine_similarity(const std::vector<float> &left,
 }
 
 std::vector<SearchResult> VectorStore::search(const std::vector<float> &query,
-                                               std::size_t top_k) const
+                                               std::size_t top_k,
+                                               const ContentFilter &filter) const
 {
     if (top_k == 0 || query.size() != dimension_) return {};
 
@@ -114,6 +115,7 @@ std::vector<SearchResult> VectorStore::search(const std::vector<float> &query,
     std::priority_queue<Candidate, std::vector<Candidate>, MinScore> heap;
     for (std::size_t i = 0; i < chunks_.size(); ++i)
     {
+        if (!filter.matches(chunks_[i])) continue;
         Candidate candidate{cosine_similarity(query, chunks_[i].embedding), i};
         if (heap.size() < top_k)
             heap.push(candidate);
@@ -184,7 +186,14 @@ bool VectorStore::save(const std::string &path, std::string *error) const
         if (!write_string(output, chunk.document_id) ||
             !write_string(output, chunk.source) ||
             !write_value(output, chunk_index) ||
-            !write_string(output, chunk.text))
+            !write_string(output, chunk.text) ||
+            !write_string(output, chunk.source_type) ||
+            !write_string(output, chunk.source_id) ||
+            !write_string(output, chunk.author) ||
+            !write_string(output, chunk.created_at) ||
+            !write_string(output, chunk.status) ||
+            !write_string(output, chunk.trust_level) ||
+            !write_value(output, chunk.content_version))
         {
             set_error(error, "failed to write vector index metadata");
             return false;
@@ -234,7 +243,7 @@ bool VectorStore::load(const std::string &path, std::string *error)
     std::uint64_t dimension = 0;
     std::uint64_t count = 0;
     if (!input.good() || !std::equal(std::begin(MAGIC), std::end(MAGIC), magic) ||
-        !read_value(input, version) || version != FORMAT_VERSION ||
+        !read_value(input, version) || (version != 1 && version != FORMAT_VERSION) ||
         !read_value(input, dimension) || dimension == 0 || dimension > MAX_DIMENSION ||
         !read_value(input, count) || count > MAX_RECORDS)
     {
@@ -255,6 +264,28 @@ bool VectorStore::load(const std::string &path, std::string *error)
             return false;
         }
         chunk.chunk_index = static_cast<std::size_t>(chunk_index);
+        if (version >= 2)
+        {
+            if (!read_string(input, chunk.source_type) ||
+                !read_string(input, chunk.source_id) ||
+                !read_string(input, chunk.author) ||
+                !read_string(input, chunk.created_at) ||
+                !read_string(input, chunk.status) ||
+                !read_string(input, chunk.trust_level) ||
+                !read_value(input, chunk.content_version))
+            {
+                set_error(error, "invalid vector index content metadata");
+                return false;
+            }
+        }
+        else
+        {
+            chunk.source_type = "knowledge";
+            chunk.source_id = chunk.document_id;
+            chunk.status = "ready";
+            chunk.trust_level = "curated_knowledge";
+            chunk.content_version = 1;
+        }
         chunk.embedding.resize(static_cast<std::size_t>(dimension));
         input.read(reinterpret_cast<char *>(chunk.embedding.data()),
                    chunk.embedding.size() * sizeof(float));
@@ -276,6 +307,15 @@ bool VectorStore::load(const std::string &path, std::string *error)
     dimension_ = static_cast<std::size_t>(dimension);
     chunks_.swap(loaded);
     return true;
+}
+
+void VectorStore::remove_source(const std::string &source_type,
+                                const std::string &source_id)
+{
+    chunks_.erase(std::remove_if(chunks_.begin(), chunks_.end(),
+        [&](const DocumentChunk &chunk) {
+            return chunk.source_type == source_type && chunk.source_id == source_id;
+        }), chunks_.end());
 }
 
 void VectorStore::clear()

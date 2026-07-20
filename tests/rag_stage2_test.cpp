@@ -1,4 +1,5 @@
 #include "../ai_rag/document_loader.h"
+#include "../ai_rag/content_indexer.h"
 #include "../ai_rag/embedding_provider.h"
 #include "../ai_rag/knowledge_indexer.h"
 #include "../ai_rag/text_splitter.h"
@@ -108,10 +109,78 @@ void test_index_persistence_and_retrieval()
     assert(loaded.load(index_path.string(), &error));
     assert(loaded.size() == store.size());
     assert(loaded.dimension() == store.dimension());
+    assert(loaded.chunks().front().source_type == "knowledge");
+    assert(loaded.chunks().front().status == "ready");
+    assert(!loaded.chunks().front().source_id.empty());
     const std::vector<rag::SearchResult> loaded_results = loaded.search(query, 1);
     assert(loaded_results.size() == 1);
     assert(loaded_results.front().chunk.source == "reactor.md");
     fs::remove(index_path);
+}
+
+void test_generic_content_upsert_and_remove()
+{
+    rag::MockEmbeddingProvider provider(64);
+    rag::ContentIndexer indexer(provider, rag::TextSplitter(100, 10));
+    rag::VectorStore store(64);
+    rag::Document post;
+    post.id = "community:42";
+    post.source = "community-post:42";
+    post.source_type = "community";
+    post.source_id = "42";
+    post.author = "alice";
+    post.created_at = "2026-07-20 08:30:00";
+    post.status = "ready";
+    post.trust_level = "community_unverified";
+    post.content = "第一版社区帖子内容";
+    std::string error;
+    assert(indexer.upsert(post, store, nullptr, &error));
+    assert(store.size() == 1);
+    assert(store.chunks()[0].source_type == "community");
+    assert(store.chunks()[0].source_id == "42");
+    assert(store.chunks()[0].author == "alice");
+
+    post.content = "更新后的社区帖子内容";
+    post.content_version = 2;
+    assert(indexer.upsert(post, store, nullptr, &error));
+    assert(store.size() == 1);
+    assert(store.chunks()[0].content_version == 2);
+    assert(store.chunks()[0].text.find("更新后") != std::string::npos);
+
+    indexer.remove("community", "42", store);
+    assert(store.size() == 0);
+}
+
+void test_rejects_corrupt_or_future_index_without_mutation()
+{
+    const fs::path path = fs::temp_directory_path() / "rag_corrupt_index_test.ragvec";
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output << "NOT-A-RAG-INDEX";
+    }
+    rag::VectorStore store(3);
+    rag::DocumentChunk original;
+    original.source = "preserved";
+    original.text = "existing safe state";
+    original.embedding = {1.0f, 0.0f, 0.0f};
+    assert(store.add(std::move(original)));
+    std::string error;
+    assert(!store.load(path.string(), &error));
+    assert(error == "invalid or unsupported vector index header");
+    assert(store.size() == 1 && store.chunks().front().source == "preserved");
+
+    rag::VectorStore valid(3);
+    rag::DocumentChunk chunk;
+    chunk.source = "valid";
+    chunk.text = "valid";
+    chunk.embedding = {1.0f, 0.0f, 0.0f};
+    assert(valid.add(std::move(chunk)));
+    assert(valid.save(path.string(), &error));
+    { std::ofstream output(path, std::ios::binary | std::ios::app); output.put('X'); }
+    assert(!store.load(path.string(), &error));
+    assert(error == "vector index contains unexpected trailing data");
+    assert(store.size() == 1 && store.chunks().front().source == "preserved");
+    fs::remove(path);
 }
 }
 
@@ -122,6 +191,8 @@ int main()
     test_mock_embedding();
     test_exact_top_k();
     test_index_persistence_and_retrieval();
+    test_generic_content_upsert_and_remove();
+    test_rejects_corrupt_or_future_index_without_mutation();
     std::cout << "rag_stage2_test: all checks passed\n";
     return 0;
 }

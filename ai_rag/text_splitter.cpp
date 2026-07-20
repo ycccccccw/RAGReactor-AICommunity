@@ -68,6 +68,13 @@ std::vector<DocumentChunk> TextSplitter::split(const Document &document) const
             chunk.source = document.source;
             chunk.chunk_index = chunks.size();
             chunk.text = std::move(text);
+            chunk.source_type = document.source_type;
+            chunk.source_id = document.source_id.empty() ? document.id : document.source_id;
+            chunk.author = document.author;
+            chunk.created_at = document.created_at;
+            chunk.status = document.status;
+            chunk.trust_level = document.trust_level;
+            chunk.content_version = document.content_version;
             chunks.push_back(std::move(chunk));
         }
 

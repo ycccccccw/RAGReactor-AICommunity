@@ -21,7 +21,8 @@ public:
     bool load(const std::string &path, const VectorStore &store,
               std::string *error = nullptr);
     std::vector<SearchResult> search(const std::vector<float> &query,
-                                     std::size_t top_k) const;
+                                     std::size_t top_k,
+                                     const ContentFilter &filter = ContentFilter()) const;
     bool ready() const { return index_ != nullptr && store_ != nullptr; }
 
 private:

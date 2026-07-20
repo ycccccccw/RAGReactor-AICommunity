@@ -15,7 +15,8 @@ class Bm25Index
 {
 public:
     void build(const VectorStore &store);
-    std::vector<SearchResult> search(const std::string &query, std::size_t top_k) const;
+    std::vector<SearchResult> search(const std::string &query, std::size_t top_k,
+                                     const ContentFilter &filter = ContentFilter()) const;
     bool ready() const { return store_ != nullptr; }
     static std::vector<std::string> tokenize(const std::string &text);
 
@@ -33,7 +34,8 @@ public:
                     std::size_t candidate_count = 20, float rrf_k = 60.0f);
     std::vector<SearchResult> search(const std::string &query_text,
                                      const std::vector<float> &query_vector,
-                                     std::size_t final_count) const;
+                                     std::size_t final_count,
+                                     const ContentFilter &filter = ContentFilter()) const;
 
 private:
     const VectorStore &store_;

@@ -26,7 +26,8 @@ std::vector<std::string> utf8_units(const std::string &text)
 
 std::string chunk_key(const DocumentChunk &chunk)
 {
-    return chunk.source + "#" + std::to_string(chunk.chunk_index);
+    return chunk.source_type + ":" + chunk.source_id + "#" +
+           std::to_string(chunk.chunk_index);
 }
 }
 
@@ -82,27 +83,43 @@ void Bm25Index::build(const VectorStore &store)
 }
 
 std::vector<SearchResult> Bm25Index::search(const std::string &query,
-                                            std::size_t top_k) const
+                                            std::size_t top_k,
+                                            const ContentFilter &filter) const
 {
     if (!store_ || store_->size() == 0 || top_k == 0 || average_length_ == 0.0) return {};
     std::unordered_set<std::string> unique_terms;
     for (const std::string &token : tokenize(query)) unique_terms.insert(token);
     std::unordered_map<std::size_t, double> scores;
-    const double document_count = static_cast<double>(store_->size());
+    std::size_t eligible_count = 0;
+    std::size_t eligible_length = 0;
+    for (std::size_t index = 0; index < store_->chunks().size(); ++index)
+        if (filter.matches(store_->chunks()[index]))
+        {
+            ++eligible_count;
+            eligible_length += document_lengths_[index];
+        }
+    if (eligible_count == 0) return {};
+    const double document_count = static_cast<double>(eligible_count);
+    const double eligible_average = static_cast<double>(eligible_length) / eligible_count;
     constexpr double k1 = 1.5;
     constexpr double b = 0.75;
     for (const std::string &term : unique_terms)
     {
         const auto found = postings_.find(term);
         if (found == postings_.end()) continue;
-        const double df = static_cast<double>(found->second.size());
+        std::size_t eligible_df = 0;
+        for (const auto &posting : found->second)
+            if (filter.matches(store_->chunks()[posting.first])) ++eligible_df;
+        if (eligible_df == 0) continue;
+        const double df = static_cast<double>(eligible_df);
         const double idf = std::log(1.0 + (document_count - df + 0.5) / (df + 0.5));
         for (const auto &posting : found->second)
         {
+            if (!filter.matches(store_->chunks()[posting.first])) continue;
             const double tf = posting.second;
             const double length = document_lengths_[posting.first];
             scores[posting.first] += idf * tf * (k1 + 1.0) /
-                (tf + k1 * (1.0 - b + b * length / average_length_));
+                (tf + k1 * (1.0 - b + b * length / eligible_average));
         }
     }
     std::vector<std::pair<std::size_t, double>> ranked(scores.begin(), scores.end());
@@ -124,13 +141,13 @@ HybridRetriever::HybridRetriever(const VectorStore &store, HnswIndex *hnsw,
 
 std::vector<SearchResult> HybridRetriever::search(
     const std::string &query_text, const std::vector<float> &query_vector,
-    std::size_t final_count) const
+    std::size_t final_count, const ContentFilter &filter) const
 {
     std::vector<SearchResult> vector_results = hnsw_ && hnsw_->ready()
-        ? hnsw_->search(query_vector, candidate_count_)
-        : store_.search(query_vector, candidate_count_);
+        ? hnsw_->search(query_vector, candidate_count_, filter)
+        : store_.search(query_vector, candidate_count_, filter);
     const std::vector<SearchResult> keyword_results = bm25_ && bm25_->ready()
-        ? bm25_->search(query_text, candidate_count_) : std::vector<SearchResult>{};
+        ? bm25_->search(query_text, candidate_count_, filter) : std::vector<SearchResult>{};
 
     struct Fused { SearchResult result; float score = 0.0f; };
     std::map<std::string, Fused> fused;

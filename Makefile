@@ -94,14 +94,14 @@ else
 
 endif
 
-SOURCES = main.cpp timer/lst_timer.cpp http/http_conn.cpp api/api_router.cpp api/sse_stream.cpp api/metrics.cpp log/log.cpp \
+SOURCES = main.cpp timer/lst_timer.cpp http/http_conn.cpp api/api_router.cpp api/sse_stream.cpp api/metrics.cpp community/mysql_community_store.cpp community/recommendation_ranker.cpp community/question_interest_store.cpp log/log.cpp \
 	CGImysql/sql_connection_pool.cpp webserver.cpp sub_reactor.cpp config.cpp $(RAG_SOURCES) \
 	ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
 	ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/resilience.cpp \
 	ai_rag/hnsw_index.cpp ai_rag/hybrid_retriever.cpp ai_rag/bailian_rerank_provider.cpp \
 	ai_rag/rag_service.cpp
 HEADERS = $(shell find . -path './.git' -prune -o -name '*.h' -print)
-RAG_SOURCES = ai_rag/document_loader.cpp ai_rag/text_splitter.cpp \
+RAG_SOURCES = ai_rag/document_loader.cpp ai_rag/text_splitter.cpp ai_rag/content_indexer.cpp \
 	ai_rag/embedding_provider.cpp ai_rag/vector_store.cpp ai_rag/knowledge_indexer.cpp
 
 server: $(SOURCES) $(HEADERS)
@@ -113,11 +113,23 @@ test-api: tests/api_router_test.cpp api/api_router.cpp api/api_router.h api/sse_
 		ai_rag/llm_client.cpp ai_rag/prompt_builder.cpp ai_rag/resilience.cpp \
 		ai_rag/hnsw_index.cpp ai_rag/hybrid_retriever.cpp ai_rag/bailian_rerank_provider.cpp \
 		ai_rag/rag_service.cpp \
+		community/question_interest_store.cpp \
 		$(CXXFLAGS) -lboost_json -lcurl -lpthread
 	./tests/api_router_test
 
 index-documents: tools/index_documents.cpp $(RAG_SOURCES) $(HEADERS)
 	$(CXX) -o tools/index_documents tools/index_documents.cpp $(RAG_SOURCES) $(CXXFLAGS)
+
+index-community: tools/index_community.cpp community/community_index_sync.cpp $(RAG_SOURCES) $(HEADERS)
+	$(CXX) -o tools/index_community tools/index_community.cpp community/community_index_sync.cpp \
+		$(RAG_SOURCES) ai_rag/http_json_client.cpp ai_rag/bailian_embedding_provider.cpp \
+		ai_rag/hnsw_index.cpp $(CXXFLAGS) -lmysqlclient -lboost_json -lcurl -lpthread
+
+preview-recommendations: tools/preview_recommendations.cpp community/mysql_community_store.cpp \
+		community/recommendation_ranker.cpp community/question_interest_store.cpp api/metrics.cpp ai_rag/vector_store.cpp $(HEADERS)
+	$(CXX) -o tools/preview_recommendations tools/preview_recommendations.cpp \
+		community/mysql_community_store.cpp community/recommendation_ranker.cpp community/question_interest_store.cpp \
+		api/metrics.cpp ai_rag/vector_store.cpp $(CXXFLAGS) -lmysqlclient -lboost_json
 
 search-index: tools/search_index.cpp ai_rag/embedding_provider.cpp \
 	ai_rag/vector_store.cpp $(HEADERS)
@@ -151,9 +163,15 @@ test-retrieval-upgrade: tests/retrieval_upgrade_test.cpp ai_rag/hnsw_index.cpp \
 		$(CXXFLAGS) -lpthread
 	./tests/retrieval_upgrade_test
 
-test: test-api test-rag test-rag-stage3 test-sse-stream test-resilience test-retrieval-upgrade
+test-recommendation: tests/recommendation_ranker_test.cpp community/recommendation_ranker.cpp \
+		community/recommendation_ranker.h ai_rag/vector_store.cpp ai_rag/vector_store.h
+	$(CXX) -o tests/recommendation_ranker_test tests/recommendation_ranker_test.cpp \
+		community/recommendation_ranker.cpp ai_rag/vector_store.cpp $(CXXFLAGS)
+	./tests/recommendation_ranker_test
+
+test: test-api test-rag test-rag-stage3 test-sse-stream test-resilience test-retrieval-upgrade test-recommendation
 
 clean:
 	rm -f server tests/api_router_test tests/rag_stage2_test tests/rag_stage3_test \
-		tests/sse_stream_test tests/resilience_test tests/retrieval_upgrade_test tools/index_documents \
-		tools/search_index
+		tests/sse_stream_test tests/resilience_test tests/retrieval_upgrade_test tests/recommendation_ranker_test tools/index_documents \
+		tools/search_index tools/index_community tools/preview_recommendations

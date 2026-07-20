@@ -15,19 +15,14 @@ bool KnowledgeIndexer::build(const std::string &document_directory,
     if (!DocumentLoader::load_directory(document_directory, documents, error))
         return false;
 
-    VectorStore built(provider_.dimension());
-    for (const Document &document : documents)
+    for (Document &document : documents)
     {
-        std::vector<DocumentChunk> chunks = splitter_.split(document);
-        for (DocumentChunk &chunk : chunks)
-        {
-            chunk.embedding = provider_.embed(chunk.text);
-            if (!built.add(std::move(chunk), error)) return false;
-            ++stats.chunks;
-        }
+        document.source_type = "knowledge";
+        document.source_id = document.id;
+        document.status = "ready";
+        document.trust_level = "curated_knowledge";
     }
-    stats.documents = documents.size();
-    store = std::move(built);
-    return true;
+    ContentIndexer indexer(provider_, splitter_);
+    return indexer.build(documents, store, stats, error);
 }
 }
