@@ -34,8 +34,22 @@ class API:
           headers={"Authorization":"Bearer "+self.key},
           json={"model":LLM,"messages":[
             {"role":"system","content":"只能根据给定资料回答；资料没有答案时必须明确说无法根据资料回答，不得猜测。"},
-            {"role":"user","content":prompt}],"temperature":0.2,"max_tokens":800},timeout=90)
-        r.raise_for_status();return r.json()["choices"][0]["message"]["content"],(time.perf_counter()-t)*1000
+            {"role":"user","content":prompt}],"temperature":0.2,"max_tokens":800,
+                "stream":True,"stream_options":{"include_usage":True}},timeout=90,stream=True)
+        r.raise_for_status()
+        pieces=[];ttft_ms=None
+        for raw in r.iter_lines(decode_unicode=True):
+            if not raw or not raw.startswith("data:"):continue
+            data=raw[5:].strip()
+            if not data or data=="[DONE]":continue
+            event=json.loads(data)
+            for choice in event.get("choices",[]):
+                content=choice.get("delta",{}).get("content","")
+                if content:
+                    if ttft_ms is None:ttft_ms=(time.perf_counter()-t)*1000
+                    pieces.append(content)
+        total_ms=(time.perf_counter()-t)*1000
+        return "".join(pieces),ttft_ms or total_ms,total_ms
 
 def main():
     api=API()
@@ -59,11 +73,13 @@ def main():
         prompt="问题："+q+"\n\n资料：\n"+"\n\n".join(
             f"[来源{n+1}] {text}" for n,text in enumerate(contexts))
         prompt_ms=(time.perf_counter()-t)*1000
-        answer,llm_ms=api.answer(prompt)
+        answer,llm_ttft_ms,llm_ms=api.answer(prompt)
         target={"reactor":"reactor.md","security":"security.md","pool":"thread_pool.txt"}.get(case["id"].split("-")[0])
         ranks=[i+1 for i,idx in enumerate(order) if docs[idx]["id"]==target] if target else []
         rows.append({"id":case["id"],"embedding_ms":embed_ms,"vector_ms":vector_ms,
                      "rerank_ms":rerank_ms,"prompt_ms":prompt_ms,"llm_ms":llm_ms,
+                     "llm_ttft_ms":llm_ttft_ms,
+                     "end_to_end_ttft_ms":embed_ms+vector_ms+rerank_ms+prompt_ms+llm_ttft_ms,
                      "total_ms":embed_ms+vector_ms+rerank_ms+prompt_ms+llm_ms,
                      "target_rank":ranks[0] if ranks else None,"top_similarity":scores[0]})
         collected.append({**case,"response":answer,"retrieved_contexts":contexts,
@@ -72,7 +88,8 @@ def main():
                           "latency_ms":rows[-1]["total_ms"],"request_id":"best-pipeline",
                           "collection_error":None})
         print(case["id"],round(rows[-1]["total_ms"],1),flush=True)
-    stages=["embedding_ms","vector_ms","rerank_ms","prompt_ms","llm_ms","total_ms"]
+    stages=["embedding_ms","vector_ms","rerank_ms","prompt_ms","llm_ttft_ms",
+            "end_to_end_ttft_ms","llm_ms","total_ms"]
     answerable=[r for r in rows if r["target_rank"]]
     summary={"configuration":{"chunking":"semantic","embedding":MODEL,"dimension":DIM,
                               "rerank":RERANK,"llm":LLM},
