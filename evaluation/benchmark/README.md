@@ -7,6 +7,7 @@
 set -a; source .env; set +a
 .venv-ragas/bin/python evaluation/benchmark/generate_dataset.py
 .venv-ragas/bin/python evaluation/benchmark/benchmark.py
+.venv-ragas/bin/python evaluation/benchmark/best_pipeline.py
 ```
 
 所有远程响应与向量均缓存到 `cache/`（已忽略），原始结果写入 `results/`。

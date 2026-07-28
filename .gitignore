@@ -40,6 +40,7 @@ evaluation/benchmark/cache/
 evaluation/benchmark/results/
 evaluation/ragas/reports/
 evaluation/ragas/dataset/collected.json
+evaluation/ragas/dataset/collected.best.json
 
 # Bundled/generated artifacts
 webbench-1.5.tar.gz
