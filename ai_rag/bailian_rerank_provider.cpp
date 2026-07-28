@@ -10,23 +10,18 @@ namespace rag
 {
 namespace
 {
-std::string rerank_endpoint(std::string base)
+std::string rerank_endpoint(std::string endpoint)
 {
-    while (!base.empty() && base.back() == '/') base.pop_back();
-    const std::string compatible_mode = "/compatible-mode/v1";
-    const std::size_t position = base.rfind(compatible_mode);
-    if (position != std::string::npos)
-        base.replace(position, compatible_mode.size(), "/compatible-api/v1");
-    else if (base.rfind("/compatible-api/v1") == std::string::npos)
-        throw std::invalid_argument("cannot derive Bailian rerank URL from BAILIAN_BASE_URL");
-    return base + "/reranks";
+    while (!endpoint.empty() && endpoint.back() == '/') endpoint.pop_back();
+    if (endpoint.empty()) throw std::invalid_argument("RAG_RERANK_URL is empty");
+    return endpoint;
 }
 }
 
 BailianRerankProvider::BailianRerankProvider(
-    std::string compatible_base_url, std::string api_key, std::string model,
+    std::string endpoint, std::string api_key, std::string model,
     long connect_timeout_ms, long request_timeout_ms)
-    : endpoint_(rerank_endpoint(std::move(compatible_base_url))),
+    : endpoint_(rerank_endpoint(std::move(endpoint))),
       api_key_(std::move(api_key)), model_(std::move(model)),
       client_(connect_timeout_ms, request_timeout_ms)
 {
@@ -43,17 +38,23 @@ std::vector<SearchResult> BailianRerankProvider::rerank(
     for (const SearchResult &candidate : candidates)
         documents.push_back(json::value(candidate.chunk.text));
 
+    json::object input;
+    input["query"] = query;
+    input["documents"] = std::move(documents);
+    json::object parameters;
+    parameters["top_n"] = std::min(top_n, candidates.size());
+    parameters["return_documents"] = false;
     json::object request;
     request["model"] = model_;
-    request["query"] = query;
-    request["documents"] = std::move(documents);
-    request["top_n"] = std::min(top_n, candidates.size());
-    request["instruct"] =
-        "Given a knowledge-base question, retrieve passages that directly answer it.";
+    request["input"] = std::move(input);
+    request["parameters"] = std::move(parameters);
 
     const json::value response = client_.post(endpoint_, api_key_, request);
     if (!response.is_object()) throw std::runtime_error("rerank response is not an object");
-    const json::value *results = response.as_object().if_contains("results");
+    const json::value *output = response.as_object().if_contains("output");
+    if (!output || !output->is_object())
+        throw std::runtime_error("rerank response has no output");
+    const json::value *results = output->as_object().if_contains("results");
     if (!results || !results->is_array())
         throw std::runtime_error("rerank response has no results");
 

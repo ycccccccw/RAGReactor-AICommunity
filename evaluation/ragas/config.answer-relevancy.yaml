@@ -1,0 +1,23 @@
+server:
+  base_url: "http://127.0.0.1:9006"
+  username_env: "RAGAS_TEST_USERNAME"
+  password_env: "RAGAS_TEST_PASSWORD"
+  connect_timeout_seconds: 5
+  answer_timeout_seconds: 60
+  top_k: 5
+evaluator:
+  api_key_env: "BAILIAN_API_KEY"
+  base_url_env: "BAILIAN_BASE_URL"
+  llm_model_env: "RAG_LLM_MODEL"
+  embedding_model_env: "RAG_EMBEDDING_MODEL"
+  default_llm_model: "qwen-plus"
+  default_embedding_model: "text-embedding-v4"
+  max_workers: 2
+  timeout_seconds: 60
+metrics:
+  enabled: [answer_relevancy]
+  thresholds: {answer_relevancy: 0.70}
+paths:
+  dataset: "evaluation/ragas/dataset/golden.json"
+  collected: "evaluation/ragas/dataset/collected.json"
+  report_dir: "evaluation/ragas/reports"

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "replace-me-001",
+    "question": "请替换为需要评测的问题",
+    "reference": "请填写人工确认的标准答案",
+    "reference_contexts": [
+      "请填写支持标准答案的原始知识片段"
+    ],
+    "include_community": false,
+    "tags": ["example", "single-hop"]
+  }
+]

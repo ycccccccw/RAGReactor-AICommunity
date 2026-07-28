@@ -1,0 +1,28 @@
+RAGAS 评测框架（暂未放入正式测试要求）
+
+1. 可选：复制配置
+   cp evaluation/ragas/config.example.yaml evaluation/ragas/config.yaml
+
+2. 填写 evaluation/ragas/dataset/golden.json
+   字段参考 golden.example.json。
+
+3. 设置测试账号。百炼变量会自动读取项目根目录 .env：
+   export RAGAS_TEST_USERNAME="测试账号"
+   export RAGAS_TEST_PASSWORD="测试密码"
+
+4. 验证环境：
+   .venv-ragas/bin/python evaluation/ragas/validate_setup.py --check-server
+
+5. 采集并评测：
+   ./evaluation/ragas/run.sh
+
+   使用自定义配置：
+   RAGAS_CONFIG=/绝对路径/config.yaml ./evaluation/ragas/run.sh
+
+只采集：
+   .venv-ragas/bin/python evaluation/ragas/collect_responses.py
+
+只重新评分：
+   .venv-ragas/bin/python evaluation/ragas/evaluate.py
+
+输出位于 evaluation/ragas/reports/，默认不提交到 Git。

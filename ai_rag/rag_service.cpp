@@ -108,7 +108,9 @@ RagService::RagService()
             environment_size("RAG_LLM_TIMEOUT_MS", 30000));
         if (environment_bool("RAG_RERANK_ENABLED", true))
             reranker_ = std::make_unique<BailianRerankProvider>(
-                base_url, key, environment("RAG_RERANK_MODEL", "qwen3-rerank"),
+                environment("RAG_RERANK_URL",
+                    "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"),
+                key, environment("RAG_RERANK_MODEL", "qwen3-rerank"),
                 environment_size("RAG_CONNECT_TIMEOUT_MS", 5000),
                 environment_size("RAG_RERANK_TIMEOUT_MS", 10000));
         configured_ = true;

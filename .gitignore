@@ -33,6 +33,13 @@ knowledge/index/
 root/uploads/
 root/community-legacy.html
 backups/
+.venv-ragas/
+__pycache__/
+*.pyc
+evaluation/benchmark/cache/
+evaluation/benchmark/results/
+evaluation/ragas/reports/
+evaluation/ragas/dataset/collected.json
 
 # Bundled/generated artifacts
 webbench-1.5.tar.gz

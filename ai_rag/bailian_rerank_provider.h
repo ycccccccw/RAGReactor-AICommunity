@@ -9,7 +9,7 @@ namespace rag
 class BailianRerankProvider : public RerankProvider
 {
 public:
-    BailianRerankProvider(std::string compatible_base_url, std::string api_key,
+    BailianRerankProvider(std::string endpoint, std::string api_key,
                           std::string model = "qwen3-rerank",
                           long connect_timeout_ms = 3000,
                           long request_timeout_ms = 10000);

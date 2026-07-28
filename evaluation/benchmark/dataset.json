@@ -1,0 +1,587 @@
+[
+  {
+    "question": "RAG问答和社区推荐融合后形成的系统名称是什么？",
+    "reference_answer": "智能知识社区",
+    "document_ids": [
+      "docs/AI_RAG_COMMUNITY_INTEGRATION_PLAN.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "社区帖子表的数据库表名是什么？",
+    "reference_answer": "user_posts",
+    "document_ids": [
+      "docs/AI_RAG_COMMUNITY_INTEGRATION_PLAN.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "最小可用版本预计需要多少个工作日完成？",
+    "reference_answer": "7～10 天",
+    "document_ids": [
+      "docs/AI_RAG_COMMUNITY_INTEGRATION_PLAN.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "用户行为采集包括哪些具体行为类型？",
+    "reference_answer": "曝光、打开、停留、点赞、收藏、快速划走和不感兴趣",
+    "document_ids": [
+      "docs/AI_RAG_COMMUNITY_INTEGRATION_PLAN.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "推荐分计算中语义相似度的权重是多少？",
+    "reference_answer": "0.45",
+    "document_ids": [
+      "docs/AI_RAG_COMMUNITY_INTEGRATION_PLAN.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "阶段0基线确认报告的执行日期是什么？",
+    "reference_answer": "2026-07-20",
+    "document_ids": [
+      "docs/STAGE0_BASELINE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "MySQL服务监听的端口号是多少？",
+    "reference_answer": "3306",
+    "document_ids": [
+      "docs/STAGE0_BASELINE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "`user_posts`表包含哪6个字段？",
+    "reference_answer": "id, username, content_text, file_path, file_type, created_at",
+    "document_ids": [
+      "docs/STAGE0_BASELINE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "`make test`命令最终的退出码是多少？",
+    "reference_answer": "0",
+    "document_ids": [
+      "docs/STAGE0_BASELINE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "`POST /api/ask`接口在运行时冒烟测试中返回什么HTTP状态码？",
+    "reference_answer": "HTTP 502",
+    "document_ids": [
+      "docs/STAGE0_BASELINE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "社区 Feed 接口 `/api/community/feed` 的分页方式是什么？",
+    "reference_answer": "登录后按帖子 ID 倒序游标分页",
+    "document_ids": [
+      "docs/STAGE1_DYNAMIC_FEED_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "采集用户行为的接口路径是什么？",
+    "reference_answer": "/api/community/action",
+    "document_ids": [
+      "docs/STAGE1_DYNAMIC_FEED_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "点赞、收藏和不感兴趣操作在数据库中保存为什么类型的状态？",
+    "reference_answer": "用户最终状态",
+    "document_ids": [
+      "docs/STAGE1_DYNAMIC_FEED_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "当 `COMMUNITY_DYNAMIC_FEED_ENABLED` 设置为 `false` 时，社区入口会切换到什么页面？",
+    "reference_answer": "服务端生成 community-legacy.html",
+    "document_ids": [
+      "docs/STAGE1_DYNAMIC_FEED_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "未登录状态下请求 `/api/community/feed` 接口应返回什么 HTTP 状态码？",
+    "reference_answer": "401",
+    "document_ids": [
+      "docs/STAGE1_DYNAMIC_FEED_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "知识向量文件的完整路径是什么？",
+    "reference_answer": "knowledge/index/bailian-v4-1024.ragvec",
+    "document_ids": [
+      "docs/STAGE2_UNIFIED_INDEX_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "RAG问答默认限制检索哪些来源类型的内容？",
+    "reference_answer": "knowledge",
+    "document_ids": [
+      "docs/STAGE2_UNIFIED_INDEX_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "社区索引失败记录中，有多少条是因远程Embedding超时导致的？",
+    "reference_answer": "20",
+    "document_ids": [
+      "docs/STAGE2_UNIFIED_INDEX_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "屏蔽一个社区帖子后，需执行什么命令才能使其从向量文件和HNSW中移除？",
+    "reference_answer": "./tools/index_community",
+    "document_ids": [
+      "docs/STAGE2_UNIFIED_INDEX_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "更新user_posts表中的帖子后，数据库触发器会将注册记录的index_status设置为什么状态？",
+    "reference_answer": "pending",
+    "document_ids": [
+      "docs/STAGE2_UNIFIED_INDEX_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "新用户在没有兴趣画像时，推荐排序依据哪四个信号？",
+    "reference_answer": "热门、内容质量、新鲜度和探索分",
+    "document_ids": [
+      "docs/STAGE3_RECOMMENDATION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "快速划过行为对推荐分的惩罚值是多少？",
+    "reference_answer": "0.15",
+    "document_ids": [
+      "docs/STAGE3_RECOMMENDATION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "用户最近90天内的行为用于构建兴趣向量，其中7天外但90天内的行为权重乘以多少？",
+    "reference_answer": "0.25",
+    "document_ids": [
+      "docs/STAGE3_RECOMMENDATION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "当社区向量索引缺失或读取失败时，语义得分如何处理？",
+    "reference_answer": "自动归零",
+    "document_ids": [
+      "docs/STAGE3_RECOMMENDATION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "使用mode=latest参数时，Feed按什么顺序排列？",
+    "reference_answer": "严格按发布时间倒序",
+    "document_ids": [
+      "docs/STAGE3_RECOMMENDATION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "POST /api/ask 接口新增的布尔参数名称及其默认值是什么？",
+    "reference_answer": "include_community，默认 false",
+    "document_ids": [
+      "docs/STAGE4_RAG_COMMUNITY_FUSION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "当 include_community 为 true 时，响应中额外返回的字段名称是什么？",
+    "reference_answer": "related_community_posts",
+    "document_ids": [
+      "docs/STAGE4_RAG_COMMUNITY_FUSION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "社区帖子在 Prompt 中被如何标注？",
+    "reference_answer": "未经核验的社区经验",
+    "document_ids": [
+      "docs/STAGE4_RAG_COMMUNITY_FUSION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "每次成功生成问题向量后，其作为短期兴趣信号在推荐画像中的初始权重是多少？",
+    "reference_answer": "0.20",
+    "document_ids": [
+      "docs/STAGE4_RAG_COMMUNITY_FUSION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "问题向量短期兴趣信号的半衰期是多少分钟？",
+    "reference_answer": "60",
+    "document_ids": [
+      "docs/STAGE4_RAG_COMMUNITY_FUSION_GUIDE.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "Feed性能优化后吞吐量提升百分比是多少？",
+    "reference_answer": "125.1%",
+    "document_ids": [
+      "docs/STAGE5_FULL_SYSTEM_ACCEPTANCE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "测试环境中操作系统的内核版本是什么？",
+    "reference_answer": "Linux 6.8",
+    "document_ids": [
+      "docs/STAGE5_FULL_SYSTEM_ACCEPTANCE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "RAG优化后对未知事实问题的响应中，引用来源数量是多少？",
+    "reference_answer": "0个来源",
+    "document_ids": [
+      "docs/STAGE5_FULL_SYSTEM_ACCEPTANCE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "并发隔离测试中，同时进行Feed请求、登录和上传页面访问时，上传页面的响应时间是多少毫秒？",
+    "reference_answer": "0.51 ms",
+    "document_ids": [
+      "docs/STAGE5_FULL_SYSTEM_ACCEPTANCE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "自动化测试共包含多少组测试用例？",
+    "reference_answer": "7组",
+    "document_ids": [
+      "docs/STAGE5_FULL_SYSTEM_ACCEPTANCE_REPORT.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "Feed 接口的默认 mode 参数值是什么？",
+    "reference_answer": "for_you",
+    "document_ids": [
+      "docs/community-api-contract.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "在行为事件接口中，哪些 action 值会参与兴趣画像构建？",
+    "reference_answer": "open、dwell、like、unlike、collect、uncollect、skip、dislike",
+    "document_ids": [
+      "docs/community-api-contract.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "知识片段和社区帖子在检索层使用的唯一标识由哪两个字段共同构成？",
+    "reference_answer": "source_type 和 source_id",
+    "document_ids": [
+      "docs/community-api-contract.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "未验证社区内容（community_unverified）是否默认进入 RAG 上下文？",
+    "reference_answer": "否",
+    "document_ids": [
+      "docs/community-api-contract.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "API 响应中时间字段遵循的格式标准是什么？",
+    "reference_answer": "RFC 3339 UTC",
+    "document_ids": [
+      "docs/community-api-contract.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "阶段5是否需要执行新的数据库迁移？",
+    "reference_answer": "不需要新的数据库迁移",
+    "document_ids": [
+      "docs/DEPLOYMENT_AND_ROLLBACK.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "推荐配置中COMMUNITY_QUESTION_INTEREST_WEIGHT的值是多少？",
+    "reference_answer": "0.20",
+    "document_ids": [
+      "docs/DEPLOYMENT_AND_ROLLBACK.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "启动9006端口服务前，应先执行什么命令来加载环境变量？",
+    "reference_answer": "source .env",
+    "document_ids": [
+      "docs/DEPLOYMENT_AND_ROLLBACK.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "知识索引启动时若版本不兼容会如何处理？",
+    "reference_answer": "安全重建",
+    "document_ids": [
+      "docs/DEPLOYMENT_AND_ROLLBACK.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "回滚时若索引同步导致异常，应恢复哪两类备份文件？",
+    "reference_answer": ".ragvec和.hnsw",
+    "document_ids": [
+      "docs/DEPLOYMENT_AND_ROLLBACK.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "图片上传后浏览器显示破图的根因是什么？",
+    "reference_answer": "上传文件使用随机哈希前缀，当 basename 以 '1'、'5'、'6' 或 '7' 开头时，被旧路由错误识别为特殊页面（如登录页），返回 text/html 响应而非 image/png，导致浏览器尝试将 HTML 当作 PNG 渲染。",
+    "document_ids": [
+      "docs/WEBSERVER_REGRESSION_FIX.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "修复后哪些 URL 路径被精确匹配为特殊页面路由？",
+    "reference_answer": "/0、/1、/5、/6、/7、/2CGISQL.cgi、/3CGISQL.cgi",
+    "document_ids": [
+      "docs/WEBSERVER_REGRESSION_FIX.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "/uploads/ 目录下的静态图片访问是否需要登录？",
+    "reference_answer": "不需要登录，/uploads/* 作为页面中的静态媒体可以直接读取。",
+    "document_ids": [
+      "docs/WEBSERVER_REGRESSION_FIX.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "WebServer 的 listen() backlog 被设置为多少？",
+    "reference_answer": "4096",
+    "document_ids": [
+      "docs/WEBSERVER_REGRESSION_FIX.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "流式 /api/ask 接口的单 IP 请求令牌桶配置中，突发容量和每秒恢复速率分别是多少？",
+    "reference_answer": "突发容量为 4，每秒恢复速率为 0.5 个",
+    "document_ids": [
+      "docs/WEBSERVER_REGRESSION_FIX.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "RAGReactor 使用的 Reactor 架构类型是什么？",
+    "reference_answer": "Main-Sub Reactor 架构",
+    "document_ids": [
+      "knowledge/documents/reactor.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "Main Reactor 的主要职责是什么？",
+    "reference_answer": "accept 新连接",
+    "document_ids": [
+      "knowledge/documents/reactor.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "Sub Reactor 使用什么机制管理客户端连接的 EPOLLIN 和 EPOLLOUT 事件？",
+    "reference_answer": "epoll",
+    "document_ids": [
+      "knowledge/documents/reactor.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "进程收到 SIGTERM 信号时，信号处理函数将信号编号写入哪个文件描述符的写端？",
+    "reference_answer": "pipefd",
+    "document_ids": [
+      "knowledge/documents/reactor.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "EPOLLIN 表示什么含义？",
+    "reference_answer": "文件描述符当前有数据可以读取",
+    "document_ids": [
+      "knowledge/documents/reactor.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "用户密码在数据库中以什么形式保存？",
+    "reference_answer": "使用 PBKDF2-HMAC-SHA256、独立随机盐和多轮迭代保存，不保存明文密码",
+    "document_ids": [
+      "knowledge/documents/security.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "注册时防止 SQL 注入采用的具体技术是什么？",
+    "reference_answer": "使用 prepared statement",
+    "document_ids": [
+      "knowledge/documents/security.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "登录成功后，服务器通过何种方式将 Session ID 返回给客户端？",
+    "reference_answer": "通过 HttpOnly Cookie 返回",
+    "document_ids": [
+      "knowledge/documents/security.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "服务端保存的 Session 信息包含哪些具体内容？",
+    "reference_answer": "Session 与用户、CSRF Token 和过期时间的映射",
+    "document_ids": [
+      "knowledge/documents/security.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "系统对登录、注册、上传和普通请求实施限流所采用的算法是什么？",
+    "reference_answer": "令牌桶算法",
+    "document_ids": [
+      "knowledge/documents/security.md"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "线程池的主要作用是什么？",
+    "reference_answer": "复用一组工作线程，避免每个 HTTP 请求都创建和销毁线程",
+    "document_ids": [
+      "knowledge/documents/thread_pool.txt"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "Sub Reactor 在完成非阻塞 socket 读取后，如何将业务处理任务传递给工作线程？",
+    "reference_answer": "把业务处理任务放入线程安全队列",
+    "document_ids": [
+      "knowledge/documents/thread_pool.txt"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "工作线程在接收到任务后具体执行哪些操作？",
+    "reference_answer": "解析 HTTP 请求并执行业务逻辑",
+    "document_ids": [
+      "knowledge/documents/thread_pool.txt"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "服务器如何防止任务积压导致内存无限增长？",
+    "reference_answer": "当任务积压超过线程池最大任务队列长度时，拒绝继续入队",
+    "document_ids": [
+      "knowledge/documents/thread_pool.txt"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  },
+  {
+    "question": "工作线程完成结果后，通过什么机制通知原来的 Sub Reactor？",
+    "reference_answer": "通过 eventfd 和完成队列",
+    "document_ids": [
+      "knowledge/documents/thread_pool.txt"
+    ],
+    "include_community": false,
+    "category": "project_grounded"
+  }
+]
